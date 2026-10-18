@@ -10,6 +10,7 @@ def snapshot(deterministic, live=None, files=None):
     live_summary=(live or {}).get('summary',{})
     arms=live_summary.get('arms',[])
     treatment=next((a for a in arms if a['arm']=='F0'),None)
+    baseline=next((a for a in arms if a['arm']=='B0'),None)
     comparison=live_summary.get('paired_f0_vs_b0',{})
     stale=metrics['stale_acceptance_rate'];reuse=metrics['reuse_rate']
     completion=treatment['completion'] if treatment else {'numerator':0,'denominator':0,'rate':None}
@@ -24,7 +25,7 @@ def snapshot(deterministic, live=None, files=None):
          'detail':f"{reuse['numerator']} reused / {reuse['denominator']} eligible kernel artifacts"},
         {'key':'completion','label':'Verified completion','value':completion['rate'],'unit':'percent',**completion,
          'detail':f"F0 {completion['numerator']}/{completion['denominator']}; B0 comparison pending" if not arms else
-            f"F0 − B0: {comparison.get('difference_pp')} pp; {comparison.get('paired_runs',0)} pairs"},
+            f"B0 {baseline['completion']['numerator']}/{baseline['completion']['denominator']}; F0 {completion['numerator']}/{completion['denominator']}; Δ {comparison.get('difference_pp')} pp" if baseline else 'Matched baseline unavailable'},
         {'key':'cost','label':'Cost per success','value':treatment.get('cost_per_verified_completion_usd') if treatment else None,
          'unit':'USD','numerator':None,'denominator':completion['numerator'],'detail':'Actual billing evidence unavailable'},
         {'key':'p95','label':'P95 completion time','value':treatment.get('p95_seconds') if treatment else None,
@@ -48,14 +49,15 @@ def snapshot(deterministic, live=None, files=None):
             'rate':value['rate']} for key,value in metrics.items()]
     attacks=[r for r in deterministic['rows'] if r['suite']=='E']
     pending=[{'task_id':r['task_id'],'arm':r['arm'],'trial':r['trial'],'status':r['status'],
-        'attempted':r.get('attempted',False),'verified_completion':r.get('verified_completion')}
+        'attempted':r.get('attempted',False),'verified_completion':r.get('verified_completion'),
+        **{key:r.get(key) for key in ('wall_seconds','total_tokens','model_calls','provider_retries','reused_artifacts','regenerated_artifacts')}}
         for r in (live or {}).get('rows',[])]
     definitions=[{'label':r['label'],'definition':r['detail'],'componentIds':['headline-'+r['key']],
         'formula':'See numerator, denominator and unit in reviewed row. Null means unavailable.',
         'numerator':str(r['numerator']),'denominator':str(r['denominator']),
         'sourceLineage':[{'files':files}]} for r in headlines]
-    def query(rows,label):
-        return {'rows':rows,'source':{'label':label,'files':files,'executedAt':deterministic['finished_at'],
+    def query(rows,label,captured=None):
+        return {'rows':rows,'source':{'label':label,'files':files,'executedAt':captured or deterministic['finished_at'],
             'metricDefinitions':definitions,'caveats':[
                 'Deterministic and scripted checks are not real-model task results.',
                 'Zero observed failures are limited to tested cases; hidden dependencies are outside the kernel guarantee.',
@@ -71,8 +73,9 @@ def snapshot(deterministic, live=None, files=None):
             'concurrency_groups':query(groups,'Raw per-seed concurrency groups'),
             'attacks':query(attacks,'Adversarial and process crash records'),
             'limitations':query(deterministic['summary']['limitations'],'Dependency observation boundary'),
-            'live_runs':query(pending,'Every scheduled paired run'),
-            'live_arms':query(arms,'Attempted live runs only; scripted records excluded'),
+            'live_runs':query(pending,'Every scheduled paired run',(live or {}).get('generated_at')),
+            'live_arms':query(arms,'Attempted live runs only; scripted records excluded',(live or {}).get('generated_at')),
+            'paired_comparison':query([comparison] if comparison else [],'Paired task-cluster uncertainty',(live or {}).get('generated_at')),
             'kernel_records':query(deterministic['rows'],'Complete deterministic evidence')}}
 
 

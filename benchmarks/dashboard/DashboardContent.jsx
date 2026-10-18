@@ -14,6 +14,14 @@ const matrixColumns=[{key:'writers',label:'Writers',type:'number'},{key:'scenari
 const runColumns=[{key:'task_id',label:'Task'},{key:'arm',label:'Arm'},
   {key:'trial',label:'Trial',type:'number'},{key:'status',label:'Status',renderCell:pretty},
   {key:'verified_completion',label:'Verified',renderCell:v=>v==null?'Pending':v?'Yes':'No'}];
+const armColumns=[{key:'arm',label:'Arm'},
+  {key:'completion',label:'Verified / attempted',renderCell:v=>v?`${v.numerator}/${v.denominator} (${rate(v.rate)})`:'Pending'},
+  {key:'model_calls',label:'Model calls',type:'number'},
+  {key:'total_tokens',label:'Total tokens',type:'number'},
+  {key:'regenerated_artifacts',label:'Regenerated',type:'number'},
+  {key:'reused_artifacts',label:'Reused',type:'number'},
+  {key:'p95_seconds',label:'P95 (s)',type:'number',renderCell:v=>number(v,2)},
+  {key:'cost_per_verified_completion_usd',label:'USD / success',type:'number',renderCell:v=>v==null?'Unavailable':number(v,4)}];
 const attackColumns=[{key:'category',label:'Injected failure',renderCell:pretty},{key:'seed',label:'Seed',type:'number'},
   {key:'passed',label:'Invariant held',renderCell:v=>v?'Yes':'No'},
   {key:'observation',label:'Gate outcome'},{key:'observed_exit_code',label:'Process exit',type:'number'},
@@ -35,7 +43,9 @@ export function DashboardContent(){
     {id:'bench:gates',items:['kernel-gates'],header:<SectionHeader id="gates-title" title="Correctness and selective reuse"/>},
     {id:'bench:scaling',items:['throughput-chart','latency-chart'],header:<SectionHeader id="scaling-title" title="Kernel scaling across three seeds"/>},
     {id:'bench:matrix',items:['matrix-records'],spacing:'continuation'},
-    {id:'bench:pilot',items:['pilot-records'],header:<SectionHeader id="pilot-title" title="Four-task B0 vs F0 pilot"/>},
+    {id:'bench:pilot',items:['arm-results'],header:<SectionHeader id="pilot-title" title="Four-task B0 vs F0 pilot"/>},
+    {id:'bench:uncertainty',items:['paired-uncertainty'],spacing:'continuation'},
+    {id:'bench:attempts',items:['pilot-records'],spacing:'continuation'},
     {id:'bench:adversarial',items:['attack-records'],header:<SectionHeader id="attack-title" title="Adversarial and crash boundaries"/>},
     {id:'bench:boundary',items:['observation-boundary'],spacing:'continuation'}
   ];
@@ -57,7 +67,17 @@ export function DashboardContent(){
         spec={{type:'line',x:'writers',y:'p95_ms',series:'scenario',stackable:false,valueDecimals:2}}/>
     </SortableItem>
     {table('matrix-records','Concurrency matrix · kernel writers, including expected rejections','concurrency',matrixColumns)}
-    {table('pilot-records','Eight scheduled runs · acceptance infrastructure required','live_runs',runColumns,false)}
+    {table('arm-results','Matched arms · actual Gemma calls and independent acceptance','live_arms',armColumns,false)}
+    <SortableItem id="paired-uncertainty" label="Paired completion difference" kind="custom" span={12}>
+      <DataComponent id="paired-uncertainty" title="Paired completion difference" queryId="paired_comparison" variant="card"
+        sourceRows={reviewedRows('paired_comparison')} displayRows={reviewedRows('paired_comparison')}>
+        {reviewedRows('paired_comparison').map((row,i)=><div key={i} data-reviewed-rows>
+          <p>{row.difference_pp==null?'Paired comparison pending':`F0 − B0: ${number(row.difference_pp,2)} percentage points; 95% interval ${number(row.low_pp,2)} to ${number(row.high_pp,2)}; ${row.paired_runs} pairs across ${row.tasks} tasks.`}</p>
+          {row.caveat&&<p>{row.caveat}</p>}
+        </div>)}
+      </DataComponent>
+    </SortableItem>
+    {table('pilot-records','Eight scheduled paired runs · every failure retained','live_runs',runColumns,false)}
     {table('attack-records','Injected failures · synthetic acceptance in fault probes','attacks',attackColumns)}
     <SortableItem id="observation-boundary" label="Dependency observation boundary" kind="custom" span={12}>
       <DataComponent id="observation-boundary" title="Dependency observation boundary" queryId="limitations" variant="card"

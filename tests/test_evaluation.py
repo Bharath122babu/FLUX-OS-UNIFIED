@@ -118,3 +118,10 @@ def test_dashboard_pending_results_and_pooled_latency():
     assert headlines['completion']['value'] is None and headlines['cost']['value'] is None
     assert headlines['stale']['numerator']==0 and headlines['stale']['denominator']>0
     assert all(r['p95_ms']>=r['p50_ms'] for r in reviewed['queries']['concurrency']['rows'])
+    live_rows=[dict(task_id='task',trial=0,arm=arm,attempted=True,verified_completion=complete,
+        wall_seconds=3,total_tokens=50,cost_usd=None,status='VERIFIED' if complete else 'FAILED')
+        for arm,complete in [('B0',False),('F0',True)]]
+    live_snapshot=snapshot(result,{'summary':summarize_live(live_rows),'rows':live_rows,'generated_at':'2026-10-18T07:00:00Z'})
+    live_headline=next(r for r in live_snapshot['queries']['headlines']['rows'] if r['key']=='completion')
+    assert 'B0 0/1; F0 1/1' in live_headline['detail']
+    assert live_snapshot['queries']['live_runs']['source']['executedAt']=='2026-10-18T07:00:00Z'
