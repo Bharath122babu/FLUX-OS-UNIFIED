@@ -63,11 +63,11 @@ def test_read_file_is_bounded_without_reading_whole_file(tmp_path,monkeypatch):
     assert ws.read_file('big.txt') == 'x'*8192
 
 
-def test_symlink_source_cannot_be_sealed(runtime,tmp_path):
+def test_symlink_source_cannot_be_sealed(runtime,tmp_path,create_symlink):
     mem, actor = runtime
     work=Workspace(tmp_path/'candidate')
     secret=tmp_path/'secret.py';secret.write_text('PASSWORD="secret"\n')
-    (work.path/'link.py').symlink_to(secret)
+    create_symlink(work.path/'link.py',secret)
     gate=UnifiedGate(mem,actor)
     result=gate.publish(candidate=work,baseline=None,base_manifest={},observation=mem.observe(actor),
                         developer={'status':'PASS'},acceptance={'status':'PASS','test_count':1},
@@ -81,6 +81,7 @@ def test_failed_commit_cleans_candidate_copy(runtime,tmp_path):
     mem, actor = runtime
     work=Workspace(tmp_path/'candidate')
     work.write_file('main.py', 'x=1')
+    work.write_file('src/nested.py', 'y=2')
     gate=UnifiedGate(mem,actor)
     out=gate.publish(candidate=work,baseline=None,base_manifest={},observation=mem.observe(actor),
                         developer={'status':'PASS'},acceptance={'status':'PASS','test_count':1},
@@ -90,6 +91,7 @@ def test_failed_commit_cleans_candidate_copy(runtime,tmp_path):
     assert out.status == 'COMMIT_REJECTED'
     assert not list((tmp_path/'.fluxos-published').iterdir())
     assert (work.path/'main.py').read_text() == 'x=1'
+    assert (work.path/'src/nested.py').read_text() == 'y=2'
 
 
 def test_draft_does_not_commit_kernel_record(runtime,tmp_path):

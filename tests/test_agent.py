@@ -21,9 +21,9 @@ def test_workspace_traversal_blocked(tmp_path):
     for s in ('../pass.py','/etc/passwd','a\\b.py'):
         with pytest.raises(ValueError):w.write_file(s,'oops')
 
-def test_workspace_symlink_escape(tmp_path):
+def test_workspace_symlink_escape(tmp_path,create_symlink):
     w=Workspace(tmp_path/'work')
-    (w.path/'escape').symlink_to(tmp_path)
+    create_symlink(w.path/'escape',tmp_path)
     with pytest.raises(ValueError):w.write_file('escape/out.py','bad')
 
 def test_docker_required_not_fake(tmp_path,monkeypatch):

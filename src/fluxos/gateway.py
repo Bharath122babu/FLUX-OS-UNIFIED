@@ -149,8 +149,11 @@ class UnifiedGate:
             if not retained:
                 # Remove even readonly files created by the seal operation.
                 if dest.exists():
-                    for folder in [dest,*dest.rglob('*')]:
+                    for path in [dest,*dest.rglob('*')]:
                         try:
-                            if folder.is_dir() and not folder.is_symlink():folder.chmod(0o755)
+                            # Windows also requires clearing the read-only bit
+                            # on files before unlinking a rejected snapshot.
+                            if not path.is_symlink():
+                                path.chmod(0o755 if path.is_dir() else 0o644)
                         except OSError:pass
                     shutil.rmtree(dest,ignore_errors=True)

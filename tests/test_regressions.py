@@ -133,10 +133,10 @@ def test_byte_exact_snapshot_larger_than_model_read_limit(tmp_path):
     assert root.snapshot_to(dest)==dest.file_manifest()
     assert (dest.path/'long.py').read_text()==text
 
-def test_workspace_rejects_symlink_in_snapshot(tmp_path):
+def test_workspace_rejects_symlink_in_snapshot(tmp_path,create_symlink):
     source=Workspace(tmp_path/'src')
     source.write_file('good.py','x=1')
-    (source.path/'symlink.py').symlink_to(source.path/'good.py')
+    create_symlink(source.path/'symlink.py',source.path/'good.py')
     with pytest.raises(ValueError):source.snapshot_to(Workspace(tmp_path/'other'))
 
 def test_acceptance_suite_isolated_and_required_for_publication(setup,tmp_path,monkeypatch):

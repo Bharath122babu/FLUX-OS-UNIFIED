@@ -91,7 +91,11 @@ def test_project_head_detects_snapshot_tampering(setup):
     assert publish(setup).decision=='COMMIT'
     mem,actor,_=setup
     head=mem.project_head(actor,'campus')
-    (Path(head['snapshot_path'])/'main.py').write_text('tampered')
+    # Simulate a host attacker explicitly undoing accidental-write protection.
+    # The assertion exercises hash detection, not platform write permissions.
+    path=Path(head['snapshot_path'])/'main.py'
+    path.chmod(0o644)
+    path.write_text('tampered')
     with pytest.raises(IntegrityError):mem.project_head(actor,'campus')
 
 def test_api_project_export_contains_accepted_revision(setup):

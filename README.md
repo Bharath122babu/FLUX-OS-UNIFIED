@@ -73,7 +73,7 @@ Acceptance checks a Python CLI's exact stdout and exit code for operator-defined
 - For live model runs: a **`GEMINI_API_KEY`** with access to the model configured in `src/fluxos/agent.py`.
 - For candidate commands and independent acceptance: **Docker**, a running daemon capable of Linux containers, and the required images already pulled.
 
-Offline demos and unit/mock tests do not need an API key or Docker. On Windows, Docker must be configured for Linux containers. Native Windows currently has known path and file-permission issues; the latest local run produced **96 passing and 8 failing tests**. See [local verification](docs/LOCAL_VERIFICATION_2026-10-18.md) before using the full runtime on Windows.
+Offline demos and unit/mock tests do not need an API key or Docker. On Windows, Docker must be configured for Linux containers. After the portability fixes, local Windows tests returned **107 passed, 3 skipped, 0 failed**. The three symlink tests require Windows symlink privileges. See [local verification](docs/LOCAL_VERIFICATION_2026-10-18.md) for scope and results.
 
 ## Quick start
 
@@ -326,7 +326,7 @@ The supplied [release verification record](artifacts/VERIFICATION_v0.5.0.json) r
 
 The original release did **not** include live Gemma calls, real Docker execution, or a measured agent-performance benchmark. Those remain separate validation steps. See [security boundaries](docs/SECURITY.md) and [release notes](docs/RELEASE_NOTES_v0.5.0.md) before interpreting test results as deployment guarantees.
 
-**Local verification on October 18, 2026:** editable installation, the unified offline demo, and the synthetic benchmark succeeded on Windows with Python 3.12.10. The suite returned **96 passed, 8 failed**. Failures involve nested Windows path handling, unavailable symlink privileges, and read-only snapshot mutation/cleanup. Application code and tests were preserved from the supplied release. See the [local verification record](docs/LOCAL_VERIFICATION_2026-10-18.md) for details.
+**Local verification on October 18, 2026:** editable installation, the unified offline demo, and the synthetic benchmark succeeded on Windows with Python 3.12.10. After fixes for portable paths, stable file bytes, writable private copies, and rejected-snapshot cleanup, the suite returned **107 passed, 3 skipped, 0 failed**. Only the three real symlink tests are skipped when Windows reports missing symlink privileges; unexpected errors still fail. GitHub Actions runs tests on Ubuntu and Windows with Python 3.11 and 3.12. See the [local verification record](docs/LOCAL_VERIFICATION_2026-10-18.md) for initial and follow-up results.
 
 ## Security and limitations
 
@@ -354,7 +354,7 @@ Remaining work includes durable conversation resumption, automatic model-driven 
 | Export returns HTTP 404 | No accepted revision exists. Resolve acceptance and obtain `VERIFIED` first. |
 | Request returns HTTP 403 | Use the local address and expected Host header. Browser requests must have the same origin. |
 | Port 8765 is occupied | Start with another port, e.g. `fluxos serve --port 8766`, and update request URLs. |
-| Windows reports `unsafe path`, symlink privilege errors, or read-only cleanup failures | These are known issues in the supplied release. See the local verification record; native Windows is not fully supported by the current implementation. |
+| Three Windows symlink tests are skipped | Python requires Windows Developer Mode or the appropriate privilege to create symlinks. Normal application use does not require these tests. Enable that capability in a suitable test session to exercise them locally; Linux CI exercises real symlinks. |
 
 ## Documentation
 

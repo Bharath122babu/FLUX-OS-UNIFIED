@@ -11,6 +11,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+import stat
 import subprocess
 import tempfile
 import time
@@ -132,7 +133,7 @@ class Workspace:
             if p.is_file():
                 if len(p.relative_to(self.path).parts)>=7:
                     raise ValueError("file path exceeds worktree depth")
-                result.append(str(p.relative_to(self.path)))
+                result.append(p.relative_to(self.path).as_posix())
         if len(result)>100:
             raise ValueError("worktree exceeds 100-file budget")
         # Bound memory and disk consumption while building snapshots and manifests.
@@ -148,6 +149,9 @@ class Workspace:
             destination=target.safe(name)
             destination.parent.mkdir(parents=True,exist_ok=True)
             shutil.copy2(source,destination,follow_symlinks=False)
+            # Copies are private working files, even when the source is a sealed
+            # revision. Leave the source read-only; the gate seals its own copy.
+            destination.chmod(destination.stat().st_mode | stat.S_IWUSR)
             data=destination.read_bytes()
             if hashlib.sha256(source.read_bytes()).digest()!=hashlib.sha256(data).digest():
                 raise IntegrityError("snapshot verification failed")
@@ -172,7 +176,8 @@ class Workspace:
         if p.suffix not in {".py",".txt",".md",".json",".html",".css",".scss", ".js",".mjs",".jsx",".ts",".tsx",".toml", ".yaml", ".yml",".sh", ".sql", ".c", ".h", ".cpp", ".hpp", ".go", ".rs", ".java", ".xml", ".svg"} and p.name not in {"Dockerfile","Makefile",".gitignore"}:
             raise ValueError("unsupported writable file type")
         p.parent.mkdir(parents=True,exist_ok=True)
-        p.write_text(content,encoding="utf8")
+        # Keep source bytes and returned hashes identical across host platforms.
+        p.write_text(content,encoding="utf8",newline="\n")
         return {"path":name,"sha256":hashlib.sha256(content.encode()).hexdigest()[:16]}
 
     def edit_file(self,name:str,old:str,new:str)->dict:
