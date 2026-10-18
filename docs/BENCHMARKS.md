@@ -71,6 +71,8 @@ An unrestricted in-process caller can omit a true dependency. The benchmark reco
 
 ## Matched arms and task scope
 
+On Windows, `powershell -File scripts/run_gemma_pilot.ps1` prepares missing images, runs the Docker smoke first, and asks for the key with hidden input if it is absent from the environment. It executes only the eight-run pilot and restores the previous environment afterward. It creates a fresh timestamped output directory; it never replays interrupted attempts automatically.
+
 | Arm | Memory and reuse policy |
 | --- | --- |
 | B0 | Last-write-wins shared notes; full unit restart after every input mutation; no causal source witnesses. |
