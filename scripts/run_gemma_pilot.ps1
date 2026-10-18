@@ -10,6 +10,18 @@ if (-not $OutputDirectory) {
 }
 if (Test-Path -LiteralPath $OutputDirectory) {throw 'Choose a new output directory; previous experiment records must be preserved.'}
 $dockerCommand=Get-Command docker -ErrorAction SilentlyContinue
+if (-not $dockerCommand) {
+    foreach ($dockerBinDirectory in @(
+        (Join-Path $env:LOCALAPPDATA 'Programs\DockerDesktop\resources\bin'),
+        (Join-Path $env:ProgramFiles 'Docker\Docker\resources\bin')
+    )) {
+        if (Test-Path -LiteralPath (Join-Path $dockerBinDirectory 'docker.exe')) {
+            $env:PATH=$dockerBinDirectory+';'+$env:PATH
+            $dockerCommand=Get-Command docker -ErrorAction Stop
+            break
+        }
+    }
+}
 if (-not $dockerCommand) {throw 'Open Docker Desktop, then open a new terminal so docker is on PATH.'}
 & $dockerCommand.Source info *> $null
 if ($LASTEXITCODE -ne 0) {throw 'Docker engine is not ready. Finish Docker Desktop/WSL setup first.'}
