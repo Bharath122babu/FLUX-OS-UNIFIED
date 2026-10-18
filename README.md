@@ -73,7 +73,7 @@ Acceptance checks a Python CLI's exact stdout and exit code for operator-defined
 - For live model runs: a **`GEMINI_API_KEY`** with access to the model configured in `src/fluxos/agent.py`.
 - For candidate commands and independent acceptance: **Docker**, a running daemon capable of Linux containers, and the required images already pulled.
 
-Offline demos and unit/mock tests do not need an API key or Docker. On Windows, Docker must be configured for Linux containers. After the portability fixes, local Windows tests returned **107 passed, 3 skipped, 0 failed**. The three symlink tests require Windows symlink privileges. See [local verification](docs/LOCAL_VERIFICATION_2026-10-18.md) for scope and results.
+Offline demos and unit/mock tests do not need an API key or Docker. On Windows, Docker must be configured for Linux containers. After the portability fixes, local Windows tests returned **109 passed, 3 skipped, 0 failed**. The three symlink tests require Windows symlink privileges. See [local verification](docs/LOCAL_VERIFICATION_2026-10-18.md) for scope and results.
 
 ## Quick start
 
@@ -326,7 +326,7 @@ The supplied [release verification record](artifacts/VERIFICATION_v0.5.0.json) r
 
 The original release did **not** include live Gemma calls, real Docker execution, or a measured agent-performance benchmark. Those remain separate validation steps. See [security boundaries](docs/SECURITY.md) and [release notes](docs/RELEASE_NOTES_v0.5.0.md) before interpreting test results as deployment guarantees.
 
-**Local verification on October 18, 2026:** editable installation, the unified offline demo, and the synthetic benchmark succeeded on Windows with Python 3.12.10. After fixes for portable paths, stable file bytes, writable private copies, and rejected-snapshot cleanup, the suite returned **107 passed, 3 skipped, 0 failed**. Only the three real symlink tests are skipped when Windows reports missing symlink privileges; unexpected errors still fail. GitHub Actions runs tests on Ubuntu and Windows with Python 3.11 and 3.12. See the [local verification record](docs/LOCAL_VERIFICATION_2026-10-18.md) for initial and follow-up results.
+**Local verification on October 18, 2026:** editable installation, the unified offline demo, and the synthetic benchmark succeeded on Windows with Python 3.12.10. After fixes for portable paths, stable file bytes, writable private copies, and rejected-snapshot cleanup, the suite returned **109 passed, 3 skipped, 0 failed**. Only the three real symlink tests are skipped when Windows reports missing symlink privileges; unexpected errors still fail. GitHub Actions runs tests on Ubuntu and Windows with Python 3.11 and 3.12. See the [local verification record](docs/LOCAL_VERIFICATION_2026-10-18.md) for initial and follow-up results.
 
 ## Security and limitations
 

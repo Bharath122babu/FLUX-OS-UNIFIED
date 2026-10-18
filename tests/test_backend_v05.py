@@ -108,6 +108,28 @@ def test_harmless_developer_test_failure_does_not_override_independent_acceptanc
     assert out.verification['status']=='PASS'
 
 
+@pytest.mark.parametrize('accepted',[True,False])
+def test_gate_relocates_snapshot_root_and_reseals(runtime,monkeypatch,accepted):
+    import stat
+    original=Path.rename
+    moves=[]
+    def checked_rename(source,target):
+        if source.parent.name=='.fluxos-sealed':
+            # Exercise the POSIX move precondition even on the Windows host.
+            assert source.stat().st_mode & stat.S_IWUSR
+            assert not (source/'app.py').stat().st_mode & stat.S_IWUSR
+            moves.append(target)
+        return original(source,target)
+    monkeypatch.setattr(Path,'rename',checked_rename)
+    outcome=publish(runtime,**({'trusted_acceptance':evaluate} if accepted else {}))
+    assert outcome.status==('VERIFIED' if accepted else 'DRAFT'),outcome.reason
+    snapshot=outcome.published_snapshot if accepted else outcome.draft_snapshot
+    root=Path(snapshot['path'])
+    assert moves==[root]
+    assert not root.stat().st_mode & stat.S_IWUSR
+    assert not (root/'app.py').stat().st_mode & stat.S_IWUSR
+
+
 def test_patch_preimage_failure_keeps_all_original_files(tmp_path):
     w=Workspace(tmp_path/'work')
     w.write_file('a.py','a=1')

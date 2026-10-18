@@ -42,7 +42,7 @@ These results established native Windows limitations in the supplied release. Th
 
 ## Windows portability follow-up
 
-The local suite now reports **107 passed, 3 skipped, 0 failed** on the same Python 3.12.10 environment. The unified demo and synthetic benchmark also pass with zero model calls.
+The local suite now reports **109 passed, 3 skipped, 0 failed** on the same Python 3.12.10 environment. The unified demo and synthetic benchmark also pass with zero model calls.
 
 - Workspace file names use forward slashes on every platform, matching the kernel and Docker paths. Backslash and traversal inputs remain rejected.
 - Text writes preserve LF bytes on Windows, keeping the reported content hash consistent with the stored bytes and exported ZIP contents.
@@ -50,7 +50,8 @@ The local suite now reports **107 passed, 3 skipped, 0 failed** on the same Pyth
 - Rejected-snapshot cleanup restores file and directory writability before deleting the rejected copy. The regression also covers nested files and preservation of the original candidate.
 - The tampering test explicitly makes its target writable before modifying it, so it tests hash-based tamper detection on both Windows and Linux.
 - Real symlink tests skip only on Windows error 1314 (missing privilege). Other symlink errors remain failures. The directory escape test now explicitly creates a directory symlink.
-- Six additional test cases cover exact UTF-8/LF bytes and hashes, nested snapshot manifests, writable copies of sealed sources, and unsafe path rejection.
+- Eight additional test cases cover exact UTF-8/LF bytes and hashes, nested snapshot manifests, writable copies of sealed sources, unsafe path rejection, and sealed-root relocation for both verified revisions and drafts.
+- The initial Ubuntu CI run exposed a further POSIX permission requirement: moving a directory between parents needs write access to that directory. The gate now briefly makes only the snapshot root writable for relocation, then reseals it before final integrity checks. Candidate files remain read-only throughout.
 - A GitHub Actions matrix covers Ubuntu and Windows on Python 3.11 and 3.12, including the suite and both offline commands.
 
 The three local skips are the real symlink tests listed above. Skipping those tests does not grant the application symlink access or remove its rejection logic. To execute them locally, use a test session with Windows Developer Mode or symlink privilege, as described in the [Python documentation](https://docs.python.org/3/library/os.html#os.symlink). No system settings were changed by this fix. Live Docker and Gemma execution are still untested.

@@ -109,8 +109,12 @@ class UnifiedGate:
                 # Rename between trusted-store siblings without copying bytes.
                 # If an attacker tampers with the published tree, kernel's
                 # verification checks its hashes again within the DB transaction.
-                dest.rename(published)
-                dest=published
+                # POSIX requires write permission on a directory when moving it
+                # between parents (its '..' entry changes). Keep every file and
+                # child directory sealed; restore the root before revalidation.
+                dest.chmod(0o755)
+                dest=dest.rename(published)
+                dest.chmod(0o555)
                 if type(candidate)(dest).file_manifest()!=manifest:
                     raise IntegrityError('published snapshot changed before commit')
                 value={'files':list(manifest),'tests':developer.get('status'),
@@ -132,8 +136,9 @@ class UnifiedGate:
             draft_root=root/'.fluxos-drafts'
             draft_root.mkdir(parents=True,exist_ok=True)
             draft=draft_root/dest.name
-            dest.rename(draft)
-            dest=draft
+            dest.chmod(0o755)
+            dest=dest.rename(draft)
+            dest.chmod(0o555)
             retained=True
             return GateOutcome('CONTINUE_PRIVATE','DRAFT',
                                'Independent acceptance not satisfied: '+str(evidence.get('status','unknown')),
