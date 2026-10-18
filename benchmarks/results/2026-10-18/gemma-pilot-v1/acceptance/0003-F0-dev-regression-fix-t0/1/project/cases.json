@@ -1,0 +1,30 @@
+{
+  "entry": "main.py",
+  "cases": [
+    {
+      "stdin": "{\"values\":[\"b\",\"a\",\"b\",\"c\"]}\n",
+      "stdout": "total=[\"b\",\"a\",\"c\"]\n",
+      "exit_code": 0
+    },
+    {
+      "stdin": "{\"values\":[]}\n",
+      "stdout": "total=[]\n",
+      "exit_code": 0
+    },
+    {
+      "stdin": "{\"values\":[1,1,2,1]}\n",
+      "stdout": "total=[1,2]\n",
+      "exit_code": 0
+    },
+    {
+      "stdin": "{\"values\":[\"x\"]}\n",
+      "stdout": "total=[\"x\"]\n",
+      "exit_code": 0
+    },
+    {
+      "stdin": "{\"values\":[0,0,-1]}\n",
+      "stdout": "total=[0,-1]\n",
+      "exit_code": 0
+    }
+  ]
+}

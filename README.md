@@ -33,7 +33,7 @@ This is the **v0.6.0 backend-only shared-memory release**. It includes a CLI, Fa
 
 ## Features
 
-The [benchmark framework](docs/BENCHMARKS.md) now covers safety, selective reuse, concurrent writes, matched AI tasks, and adversarial crash boundaries. The saved deterministic experiment preserved **534/534 compatible writes**, rejected **9/9 stale candidates**, and reused **23/23 eligible artifacts**. These are kernel measurements. The approved four-task B0/F0 Gemma pilot is pending Docker-backed acceptance; no comparative AI completion or cost gain is claimed.
+The [benchmark framework](docs/BENCHMARKS.md) covers safety, selective reuse, concurrent writes, matched AI tasks, and adversarial crash boundaries. The deterministic experiment preserved **534/534 compatible writes**, rejected **9/9 stale candidates**, and reused **23/23 eligible artifacts**. The [real Gemma pilot](benchmarks/results/2026-10-18/gemma-pilot-v1/READOUT.md) completed eight attempts: **B0 passed 1/4 tasks; F0 passed 0/4**. Provider errors and missing outputs affected the pilot; it establishes no FLUX performance or cost gain. Protocol 2 addresses observed harness weaknesses and has not had another paid pilot.
 
 | Capability | Behavior in v0.6.0 |
 | --- | --- |
@@ -357,7 +357,7 @@ The v0.6 suite contains **162 test cases**. Local Windows verification returned 
 
 GitHub Actions runs the suite, stress check, and offline demos on Ubuntu and Windows with Python 3.11 and 3.12. The Ubuntu Python 3.12 job additionally runs `scripts/docker_acceptance_smoke.py` with actual Python and Node containers and a scripted model. This exercises accepted project revisions, shared-note reuse, ZIP export, and wrong-output rejection. It makes **zero live Gemma requests** and is not a container penetration test.
 
-See the [v0.6 verification record](docs/FINAL_VERIFICATION_v0.6.0.md). The supplied [v0.5 record](artifacts/VERIFICATION_v0.5.0.json), [v0.6 archive record](artifacts/VERIFICATION_v0.6.0.json), and [Windows repair history](docs/LOCAL_VERIFICATION_2026-10-18.md) are preserved as historical evidence. Live Gemma validation remains pending a credential; measured model-performance improvement is unproven.
+See the [v0.6 verification record](docs/FINAL_VERIFICATION_v0.6.0.md), [current benchmark evidence](docs/BENCHMARKS.md), and [Windows Docker setup](docs/WINDOWS_DOCKER_SETUP.md). The supplied [v0.5 record](artifacts/VERIFICATION_v0.5.0.json), [v0.6 archive record](artifacts/VERIFICATION_v0.6.0.json), and [Windows repair history](docs/LOCAL_VERIFICATION_2026-10-18.md) are historical evidence. Docker-backed Gemma testing is now recorded; measured model-performance improvement remains unproven.
 
 ## Security and limitations
 

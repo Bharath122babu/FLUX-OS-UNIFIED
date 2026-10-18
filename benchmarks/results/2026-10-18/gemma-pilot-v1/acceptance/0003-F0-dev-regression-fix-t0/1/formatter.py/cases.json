@@ -1,0 +1,30 @@
+{
+  "entry": "formatter.py",
+  "cases": [
+    {
+      "stdin": "{\"result\":[\"b\",\"a\",\"c\"]}\n",
+      "stdout": "total=[\"b\",\"a\",\"c\"]\n",
+      "exit_code": 0
+    },
+    {
+      "stdin": "{\"result\":[]}\n",
+      "stdout": "total=[]\n",
+      "exit_code": 0
+    },
+    {
+      "stdin": "{\"result\":[1,2]}\n",
+      "stdout": "total=[1,2]\n",
+      "exit_code": 0
+    },
+    {
+      "stdin": "{\"result\":[\"x\"]}\n",
+      "stdout": "total=[\"x\"]\n",
+      "exit_code": 0
+    },
+    {
+      "stdin": "{\"result\":[0,-1]}\n",
+      "stdout": "total=[0,-1]\n",
+      "exit_code": 0
+    }
+  ]
+}

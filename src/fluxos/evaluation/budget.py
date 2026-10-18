@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, asdict
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 import os
 import re
 import threading
@@ -13,6 +15,27 @@ from ..agent import MODEL, ConfigError
 
 
 class BudgetExceeded(RuntimeError):pass
+
+
+def _provider_retry_delay(response,attempt):
+    """Honor Retry-After and RPC RetryInfo without retaining provider error text."""
+    delay=float(2**attempt)
+    if response is None:return delay
+    header=response.headers.get('Retry-After')
+    if header:
+        try:delay=max(delay,float(header))
+        except ValueError:
+            try:delay=max(delay,(parsedate_to_datetime(header)-datetime.now(timezone.utc)).total_seconds())
+            except (TypeError,ValueError,OverflowError):pass
+    try:
+        details=response.json().get('error',{}).get('details',[])
+        for item in details:
+            if item.get('@type','').endswith('/google.rpc.RetryInfo'):
+                value=item.get('retryDelay','')
+                if isinstance(value,str) and re.fullmatch(r'\d+(?:\.\d+)?s',value):
+                    delay=max(delay,float(value[:-1]))
+    except (ValueError,TypeError,AttributeError):pass
+    return delay
 
 
 @dataclass(frozen=True)
@@ -48,6 +71,7 @@ class MeteredGemma:
         self.calls=0;self.attempts=0;self.count_requests=0;self.tokens=0;self.observed_tokens=0;self.reserved=0
         self.records=[];self.last_usage={};self.budget_exhausted=False
         self.usage_complete=True
+        self.cooldown_until=0.0;self.cooldown_seconds=0.0
 
     def _remaining(self):
         remaining=self.limits.wall_seconds-(perf_counter()-self.started)
@@ -58,6 +82,7 @@ class MeteredGemma:
 
     def generate(self,contents,tools,system):
         with self.lock:
+            self._wait_for_cooldown()
             self._remaining()
             if self.calls>=self.limits.model_calls:
                 self.budget_exhausted=True;raise BudgetExceeded('shared model-call budget exhausted')
@@ -86,6 +111,7 @@ class MeteredGemma:
             try:
                 for attempt in range(3):
                     with self.lock:
+                        self._wait_for_cooldown()
                         remaining=self._remaining()
                         if self.attempts>=self.limits.provider_attempts:
                             self.budget_exhausted=True;raise BudgetExceeded('provider-attempt budget exhausted')
@@ -100,8 +126,10 @@ class MeteredGemma:
                         with self.lock:
                             self.usage_complete=False
                             self.tokens+=reservation
+                            delay=_provider_retry_delay(None,attempt)
+                            self.cooldown_until=max(self.cooldown_until,perf_counter()+delay)
                             self.records.append({'type':'transport_error','error':type(exc).__name__,
-                                'attempt':attempt+1,'elapsed_seconds':perf_counter()-began})
+                                'attempt':attempt+1,'retry_delay_seconds':delay,'elapsed_seconds':perf_counter()-began})
                         if attempt==2:raise
                     else:
                         if response.is_success:
@@ -127,19 +155,31 @@ class MeteredGemma:
                             # Unknown failed-attempt usage consumes its full
                             # reservation; never silently treat it as free.
                             self.tokens+=reservation;self.usage_complete=False
+                            retryable=response.status_code in {408,429,500,502,503,504}
+                            delay=_provider_retry_delay(response,attempt) if retryable else 0
+                            if retryable:self.cooldown_until=max(self.cooldown_until,perf_counter()+delay)
                             self.records.append({'type':'http_error','status':response.status_code,
-                                                 'attempt':attempt+1,'elapsed_seconds':perf_counter()-began})
+                                'attempt':attempt+1,'retry_delay_seconds':delay,'elapsed_seconds':perf_counter()-began})
                         if response.status_code not in {408,429,500,502,503,504} or attempt==2:
                             response.raise_for_status()
-                    sleep(min(.4*2**attempt,self._remaining()))
             finally:
                 with self.lock:self.reserved-=reservation
+
+    def _wait_for_cooldown(self):
+        delay=max(0,self.cooldown_until-perf_counter())
+        if not delay:return
+        if delay>=self._remaining():
+            self.budget_exhausted=True
+            raise BudgetExceeded('provider cooldown exceeds task wall budget')
+        started=perf_counter();sleep(delay)
+        self.cooldown_seconds+=perf_counter()-started
 
     def summary(self):
         with self.lock:
             return {'model_calls':self.calls,'provider_attempts':self.attempts,
                 'provider_retries':sum(r.get('attempt',1)>1 for r in self.records),
                 'count_tokens_requests':self.count_requests,'total_tokens':self.observed_tokens if self.usage_complete else None,
+                'provider_cooldown_seconds':self.cooldown_seconds,
                 'observed_known_tokens':self.observed_tokens,'budget_charged_tokens':self.tokens,
                 'usage_complete':self.usage_complete,'budget_exhausted':self.budget_exhausted,
                 'wall_seconds':perf_counter()-self.started,'limits':asdict(self.limits),'requests':list(self.records)}

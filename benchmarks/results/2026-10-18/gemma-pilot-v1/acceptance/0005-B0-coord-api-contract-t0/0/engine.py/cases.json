@@ -1,0 +1,30 @@
+{
+  "entry": "engine.py",
+  "cases": [
+    {
+      "stdin": "{\"values\":[2,3]}\n",
+      "stdout": "{\"result\":5}\n",
+      "exit_code": 0
+    },
+    {
+      "stdin": "{\"values\":[-8,2,4]}\n",
+      "stdout": "{\"result\":-2}\n",
+      "exit_code": 0
+    },
+    {
+      "stdin": "{\"values\":[]}\n",
+      "stdout": "{\"result\":0}\n",
+      "exit_code": 0
+    },
+    {
+      "stdin": "{\"values\":[0,0]}\n",
+      "stdout": "{\"result\":0}\n",
+      "exit_code": 0
+    },
+    {
+      "stdin": "{\"values\":[17,-3,2]}\n",
+      "stdout": "{\"result\":16}\n",
+      "exit_code": 0
+    }
+  ]
+}

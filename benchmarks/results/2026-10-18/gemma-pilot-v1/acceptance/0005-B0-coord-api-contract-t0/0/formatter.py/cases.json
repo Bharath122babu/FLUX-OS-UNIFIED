@@ -1,0 +1,30 @@
+{
+  "entry": "formatter.py",
+  "cases": [
+    {
+      "stdin": "{\"result\":5}\n",
+      "stdout": "5\n",
+      "exit_code": 0
+    },
+    {
+      "stdin": "{\"result\":-2}\n",
+      "stdout": "-2\n",
+      "exit_code": 0
+    },
+    {
+      "stdin": "{\"result\":0}\n",
+      "stdout": "0\n",
+      "exit_code": 0
+    },
+    {
+      "stdin": "{\"result\":0}\n",
+      "stdout": "0\n",
+      "exit_code": 0
+    },
+    {
+      "stdin": "{\"result\":16}\n",
+      "stdout": "16\n",
+      "exit_code": 0
+    }
+  ]
+}

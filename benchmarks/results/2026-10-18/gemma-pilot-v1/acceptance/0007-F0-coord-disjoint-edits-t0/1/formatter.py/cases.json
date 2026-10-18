@@ -1,0 +1,25 @@
+{
+  "entry": "formatter.py",
+  "cases": [
+    {
+      "stdin": "{\"result\":11}\n",
+      "stdout": "total=11\n",
+      "exit_code": 0
+    },
+    {
+      "stdin": "{\"result\":0}\n",
+      "stdout": "total=0\n",
+      "exit_code": 0
+    },
+    {
+      "stdin": "{\"result\":10.0}\n",
+      "stdout": "total=10.0\n",
+      "exit_code": 0
+    },
+    {
+      "stdin": "{\"result\":0}\n",
+      "stdout": "total=0\n",
+      "exit_code": 0
+    }
+  ]
+}

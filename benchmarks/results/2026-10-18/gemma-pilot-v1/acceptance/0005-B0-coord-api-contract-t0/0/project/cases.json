@@ -1,0 +1,30 @@
+{
+  "entry": "main.py",
+  "cases": [
+    {
+      "stdin": "{\"values\":[2,3]}\n",
+      "stdout": "5\n",
+      "exit_code": 0
+    },
+    {
+      "stdin": "{\"values\":[-8,2,4]}\n",
+      "stdout": "-2\n",
+      "exit_code": 0
+    },
+    {
+      "stdin": "{\"values\":[]}\n",
+      "stdout": "0\n",
+      "exit_code": 0
+    },
+    {
+      "stdin": "{\"values\":[0,0]}\n",
+      "stdout": "0\n",
+      "exit_code": 0
+    },
+    {
+      "stdin": "{\"values\":[17,-3,2]}\n",
+      "stdout": "16\n",
+      "exit_code": 0
+    }
+  ]
+}

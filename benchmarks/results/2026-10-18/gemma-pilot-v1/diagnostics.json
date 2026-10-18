@@ -1,0 +1,32 @@
+{
+  "B0": {
+    "provider_status_counts": {
+      "200": 75,
+      "429": 4,
+      "500": 6
+    },
+    "known_token_lower_bound": 135045,
+    "budget_charged_tokens": 165085,
+    "verified_unit_generations": 11,
+    "unit_generation_attempts": 16,
+    "prior_verified_unaffected_artifacts": 1,
+    "missing_output_rejections": 4,
+    "provider_error_units": 1,
+    "shell_observation_units": 11
+  },
+  "F0": {
+    "provider_status_counts": {
+      "200": 56,
+      "429": 16,
+      "500": 4
+    },
+    "known_token_lower_bound": 99225,
+    "budget_charged_tokens": 150235,
+    "verified_unit_generations": 8,
+    "unit_generation_attempts": 16,
+    "prior_verified_unaffected_artifacts": 1,
+    "missing_output_rejections": 8,
+    "provider_error_units": 5,
+    "shell_observation_units": 8
+  }
+}

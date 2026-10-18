@@ -1,0 +1,30 @@
+{
+  "entry": "formatter.py",
+  "cases": [
+    {
+      "stdin": "{\"result\":3.0}\n",
+      "stdout": "total=3.0\n",
+      "exit_code": 0
+    },
+    {
+      "stdin": "{\"result\":-3.0}\n",
+      "stdout": "total=-3.0\n",
+      "exit_code": 0
+    },
+    {
+      "stdin": "{\"result\":0}\n",
+      "stdout": "total=0\n",
+      "exit_code": 0
+    },
+    {
+      "stdin": "{\"result\":2.5}\n",
+      "stdout": "total=2.5\n",
+      "exit_code": 0
+    },
+    {
+      "stdin": "{\"result\":7.0}\n",
+      "stdout": "total=7.0\n",
+      "exit_code": 0
+    }
+  ]
+}

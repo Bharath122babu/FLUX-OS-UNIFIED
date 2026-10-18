@@ -1,0 +1,30 @@
+{
+  "entry": "main.py",
+  "cases": [
+    {
+      "stdin": "{\"values\":[2,4]}\n",
+      "stdout": "total=3.0\n",
+      "exit_code": 0
+    },
+    {
+      "stdin": "{\"values\":[-9,3]}\n",
+      "stdout": "total=-3.0\n",
+      "exit_code": 0
+    },
+    {
+      "stdin": "{\"values\":[]}\n",
+      "stdout": "total=0\n",
+      "exit_code": 0
+    },
+    {
+      "stdin": "{\"values\":[1,2,3,4]}\n",
+      "stdout": "total=2.5\n",
+      "exit_code": 0
+    },
+    {
+      "stdin": "{\"values\":[7]}\n",
+      "stdout": "total=7.0\n",
+      "exit_code": 0
+    }
+  ]
+}

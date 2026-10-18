@@ -1,0 +1,30 @@
+{
+  "entry": "formatter.py",
+  "cases": [
+    {
+      "stdin": "{\"result\":[\"b\",\"a\",\"c\"]}\n",
+      "stdout": "[\"b\",\"a\",\"c\"]\n",
+      "exit_code": 0
+    },
+    {
+      "stdin": "{\"result\":[]}\n",
+      "stdout": "[]\n",
+      "exit_code": 0
+    },
+    {
+      "stdin": "{\"result\":[1,2]}\n",
+      "stdout": "[1,2]\n",
+      "exit_code": 0
+    },
+    {
+      "stdin": "{\"result\":[\"x\"]}\n",
+      "stdout": "[\"x\"]\n",
+      "exit_code": 0
+    },
+    {
+      "stdin": "{\"result\":[0,-1]}\n",
+      "stdout": "[0,-1]\n",
+      "exit_code": 0
+    }
+  ]
+}

@@ -2,13 +2,23 @@
 from collections import defaultdict
 from .common import utcnow, write_json
 from .metrics import percentile
+from .tasks import affected_units
 
 
 def snapshot(deterministic, live=None, files=None):
     files=files or ['deterministic.json','pilot/results.json']
     metrics=deterministic['summary']['metrics']
     live_summary=(live or {}).get('summary',{})
-    arms=live_summary.get('arms',[])
+    arms=[dict(a) for a in live_summary.get('arms',[])]
+    tasks={t['id']:t for t in (live or {}).get('plan',{}).get('tasks',[])}
+    for arm in arms:
+        rows=[r for r in (live or {}).get('rows',[]) if r.get('attempted') and r['arm']==arm['arm']]
+        arm['observed_known_tokens']=sum(r.get('observed_known_tokens',0) for r in rows)
+        arm['provider_http_429']=sum(q.get('status')==429 for r in rows for q in r.get('requests',[]))
+        arm['provider_http_5xx']=sum(500<=q.get('status',0)<600 for r in rows for q in r.get('requests',[]))
+        arm['eligible_prior_verified_artifacts']=sum(
+            u.get('phase')==0 and u.get('status')=='VERIFIED' and u['unit'] not in affected_units(tasks[r['task_id']])
+            for r in rows if r['task_id'] in tasks for u in r.get('units',[]))
     treatment=next((a for a in arms if a['arm']=='F0'),None)
     baseline=next((a for a in arms if a['arm']=='B0'),None)
     comparison=live_summary.get('paired_f0_vs_b0',{})
@@ -29,7 +39,8 @@ def snapshot(deterministic, live=None, files=None):
         {'key':'cost','label':'Cost per success','value':treatment.get('cost_per_verified_completion_usd') if treatment else None,
          'unit':'USD','numerator':None,'denominator':completion['numerator'],'detail':'Actual billing evidence unavailable'},
         {'key':'p95','label':'P95 completion time','value':treatment.get('p95_seconds') if treatment else None,
-         'unit':'s','numerator':None,'denominator':completion['denominator'],'detail':'F0 attempted tasks, including failures and retries'},
+         'unit':'s','numerator':None,'denominator':completion['denominator'],
+         'detail':f"F0 attempts: {completion['numerator']} verified, {completion['denominator']-completion['numerator']} failed; retries included"},
         {'key':'throughput','label':'Concurrent throughput','value':throughput,'unit':'commits/s',
          'numerator':sum(g['committed'] for g in selected),'denominator':sum(g['wall_seconds'] for g in selected),
          'detail':f'{maximum} writers; disjoint kernel commits; {len(selected)} seeds'},
@@ -62,10 +73,13 @@ def snapshot(deterministic, live=None, files=None):
                 'Deterministic and scripted checks are not real-model task results.',
                 'Zero observed failures are limited to tested cases; hidden dependencies are outside the kernel guarantee.',
                 'Concurrency is in-process kernel writers, not simultaneous language-model agents.',
+                'The four-task pilot is small; provider errors affect completion and latency. Failed attempts do not establish a speed benefit.',
+                'Protocol 1 eligible_reuse_artifacts counted unaffected unit slots, even without prior verified output. Use eligible_prior_verified_artifacts for valid prior work.',
                 'Latency percentiles use pooled raw attempts; throughput is commits divided by measured group seconds.']},
             'methods':[{'language':'python','code':'fluxos.evaluation.report.snapshot(saved_deterministic, saved_live)'}]}
     return {'surface':'dashboard','title':'FLUX//OS benchmark evidence','generatedAt':utcnow(),
-        'status':'Kernel measurements complete; real-model paired study pending' if not arms else 'Measured paired study',
+        'status':'Kernel measurements complete; real-model paired study pending' if not arms else 'Four-task paired pilot measured; inspect provider errors and uncertainty',
+        'measurementProtocolVersion':(live or {}).get('plan',{}).get('protocol_version',1),
         'buildStatus':'creating','filters':[], 'queries':{
             'headlines':query(headlines,'Six requested measures'),
             'gates':query(gates,'Defined invariant populations'),

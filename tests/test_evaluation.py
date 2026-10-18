@@ -10,7 +10,7 @@ from fluxos.agent import Workspace
 from fluxos.evaluation.budget import BudgetExceeded, Limits, MeteredGemma
 from fluxos.evaluation.common import write_json
 from fluxos.evaluation.deterministic import run, _reject
-from fluxos.evaluation.live import execute_task, make_plan, run_plan
+from fluxos.evaluation.live import execute_task, make_plan, run_plan, ScriptedReference
 from fluxos.evaluation.metrics import paired_difference, ratio, summarize_live
 from fluxos.evaluation.tasks import catalog, affected_units, contracts
 
@@ -125,3 +125,56 @@ def test_dashboard_pending_results_and_pooled_latency():
     live_headline=next(r for r in live_snapshot['queries']['headlines']['rows'] if r['key']=='completion')
     assert 'B0 0/1; F0 1/1' in live_headline['detail']
     assert live_snapshot['queries']['live_runs']['source']['executedAt']=='2026-10-18T07:00:00Z'
+
+
+def test_required_file_guard_and_real_eligibility_population(tmp_path,monkeypatch):
+    def synthetic(self,contract_dir,**kwargs):
+        entry=json.loads((contract_dir/'cases.json').read_text())['entry']
+        if not self.safe(entry).is_file():return {'status':'FAIL','test_count':0}
+        return {'status':'PASS','test_count':1,'trust_boundary':'blackbox','contract_hash':'UNIT_TEST_ONLY',
+                'candidate_manifest_hash':self.manifest_digest()}
+    monkeypatch.setattr(Workspace,'run_blackbox',synthetic)
+    class Premature(ScriptedReference):
+        def generate(self,contents,tools,system):
+            if len(contents)==1:
+                self.calls+=1
+                return {'parts':[{'text':'Done.'}]}
+            return super().generate(contents,tools,system)
+    task=next(t for t in catalog() if t['id']=='dev-regression-fix')
+    result=execute_task(task,'B0',0,tmp_path/'guard',Limits(),'','scripted',Premature)
+    assert result['verified_completion'] and result['model_calls']==12
+    assert any(t.get('event')=='required_output_missing' for u in result['units'] for t in u['trace'])
+    class MissingEngine(ScriptedReference):
+        def generate(self,contents,tools,system):
+            if 'Implement engine.py' in contents[0]['parts'][0]['text']:
+                self.calls+=1
+                return {'parts':[{'text':'Done.'}]}
+            return super().generate(contents,tools,system)
+    failed=execute_task(task,'F0',0,tmp_path/'missing',Limits(),'','scripted',MissingEngine)
+    assert not failed['verified_completion']
+    assert failed['eligible_reuse_artifacts']==0  # an unwritten engine is not eligible valid work
+
+
+def test_provider_retry_hints_respect_wall_budget():
+    from fluxos.evaluation.budget import _provider_retry_delay
+    response=httpx.Response(429,headers={'Retry-After':'3'},json={'error':{'details':[
+        {'@type':'type.googleapis.com/google.rpc.RetryInfo','retryDelay':'7.5s'}]}})
+    assert _provider_retry_delay(response,0)==7.5
+    calls=[]
+    def provider(request):
+        if request.url.path.endswith(':countTokens'):return httpx.Response(200,json={'totalTokens':1})
+        calls.append(1)
+        return httpx.Response(429,headers={'Retry-After':'10'})
+    client=MeteredGemma(Limits(wall_seconds=1),key='UNIT_TEST_ONLY',transport=httpx.MockTransport(provider))
+    with pytest.raises(BudgetExceeded):client.generate([],[],'test')
+    assert len(calls)==1 and client.reserved==0
+    assert client.summary()['requests'][0]['retry_delay_seconds']==10
+    assert client.summary()['budget_exhausted']
+
+
+def test_protocol_versions_cannot_silently_mix(tmp_path):
+    plan=make_plan(task_ids=[catalog()[0]['id']])
+    assert plan['protocol_version']==2
+    plan.pop('protocol_version')
+    with pytest.raises(ValueError,match='protocol'):run_plan(plan,tmp_path/'legacy')
+    assert not (tmp_path/'legacy').exists()

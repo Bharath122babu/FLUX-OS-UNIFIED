@@ -1,0 +1,5 @@
+# Experimental evidence retains exact candidate bytes and recorded hashes.
+benchmarks/results/2026-10-18/gemma-pilot-v1/** -text
+benchmarks/results/2026-10-18/gemma-pilot-v1/candidates/** linguist-generated=true
+benchmarks/results/2026-10-18/gemma-pilot-v1/assembled/** linguist-generated=true
+benchmarks/results/2026-10-18/gemma-pilot-v1/acceptance/** linguist-generated=true

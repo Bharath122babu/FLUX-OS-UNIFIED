@@ -13,6 +13,7 @@ from time import perf_counter
 import uuid
 
 from .agent import EvaluationAgent
+from . import PROTOCOL_VERSION
 from .budget import BudgetExceeded, Limits, MeteredGemma
 from .common import context, provenance, utcnow, write_json
 from .metrics import summarize_live
@@ -108,7 +109,9 @@ def make_plan(*,task_ids=None,arms=('B0','F0'),trials=1,seed=20261018,limits=Non
           for task in selected for trial in range(trials) for arm in arms]
     random.Random(seed).shuffle(runs)
     for index,row in enumerate(runs):row['order']=index
-    return {'schema_version':1,'kind':'live_plan','created_at':utcnow(),'model':model,'mode':mode,
+    return {'schema_version':1,'protocol_version':PROTOCOL_VERSION,'kind':'live_plan','created_at':utcnow(),'model':model,'mode':mode,
+            'retry_policy':'Three attempts; exponential 1s/2s fallback; honor Retry-After/RPC RetryInfo; task-wide cooldown and wall budget.',
+            'completion_policy':'Missing required output continues within the original unit-turn and task budgets.',
             'seed':seed,'trials':trials,'arms':{arm:ARMS[arm] for arm in arms},'limits':asdict(limits),
             'tasks':[tasks[task] for task in selected],'runs':runs,
             'primary_outcome':'Both task phases pass host-owned Docker unit and full-project acceptance inside the shared task budget.',
@@ -143,8 +146,8 @@ def execute_task(task,arm,trial,work,limits,model,mode,client_factory=None):
         for kind,contract in phase_contracts.items():
             write_json(work/'acceptance'/str(phase)/kind/'cases.json',contract)
         for unit in task['units']:
-            if phase==1 and unit not in affected_units(task):eligible+=1
             prior=saved.get(unit)
+            if phase==1 and prior and unit not in affected_units(task):eligible+=1
             if phase and arm in {'F0','F1'} and prior and memory.status(worker,prior['artifact_id'])=='DECLARED_CURRENT':
                 reused+=1
                 units.append({'phase':phase,'unit':unit,'status':'REUSED','artifact_id':prior['artifact_id']})
@@ -222,6 +225,8 @@ def execute_task(task,arm,trial,work,limits,model,mode,client_factory=None):
 
 
 def run_plan(plan,output,*,client_factory=None):
+    if plan.get('protocol_version',1)!=PROTOCOL_VERSION:
+        raise ValueError('Plan protocol does not match this runner. Use its recorded Git revision to reproduce a historical plan.')
     output=Path(output)
     output.mkdir(parents=True,exist_ok=False)
     write_json(output/'plan.json',plan)

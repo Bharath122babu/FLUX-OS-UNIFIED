@@ -1,0 +1,30 @@
+{
+  "entry": "engine.py",
+  "cases": [
+    {
+      "stdin": "{\"values\":[\"b\",\"a\",\"b\",\"c\"]}\n",
+      "stdout": "{\"result\":[\"b\",\"a\",\"c\"]}\n",
+      "exit_code": 0
+    },
+    {
+      "stdin": "{\"values\":[]}\n",
+      "stdout": "{\"result\":[]}\n",
+      "exit_code": 0
+    },
+    {
+      "stdin": "{\"values\":[1,1,2,1]}\n",
+      "stdout": "{\"result\":[1,2]}\n",
+      "exit_code": 0
+    },
+    {
+      "stdin": "{\"values\":[\"x\"]}\n",
+      "stdout": "{\"result\":[\"x\"]}\n",
+      "exit_code": 0
+    },
+    {
+      "stdin": "{\"values\":[0,0,-1]}\n",
+      "stdout": "{\"result\":[0,-1]}\n",
+      "exit_code": 0
+    }
+  ]
+}

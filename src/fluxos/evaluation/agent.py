@@ -98,7 +98,13 @@ class EvaluationAgent(GemmaAgent):
                 error=type(exc).__name__;break
             contents.append({'role':'model','parts':response['parts']})
             calls=[p['functionCall'] for p in response['parts'] if 'functionCall' in p]
-            if not calls:break
+            if not calls:
+                if not candidate.safe(self.unit).is_file():
+                    self.trace.append({'event':'required_output_missing','path':self.unit,'step':step})
+                    contents.append({'role':'user','parts':[{'text':
+                        f'Required output {self.unit} is still missing. Create it with write_file before finishing. Remaining turns and the original task budget still apply.'}]})
+                    continue
+                break
             outputs=[]
             for index,call in enumerate(calls):
                 try:
