@@ -1,6 +1,7 @@
 """Local hackathon development console. Not intended for public internet exposure."""
 from __future__ import annotations
 import os
+import re
 import base64
 import binascii
 import io
@@ -8,6 +9,7 @@ import zipfile
 from pathlib import Path
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from .kernel import Memory,Principal
 from .agent import GemmaClient,GemmaAgent,Workspace,ConfigError,MODEL
@@ -25,13 +27,34 @@ class Goal(BaseModel):
     image_mime: str | None = None
 
 
+class ChatMessage(BaseModel):
+    message: str = Field(min_length=1,max_length=4000)
+
+
+class ProviderConfig(BaseModel):
+    api_key: str = Field(min_length=1,max_length=512)
+    models: list[str] = Field(default_factory=lambda:[MODEL],min_length=1,max_length=8)
+
+
 def create_app(home: str|Path=".fluxos") -> FastAPI:
     home=Path(home).resolve()
     home.mkdir(parents=True,exist_ok=True)
     app=FastAPI(title="FLUX//OS",description="Local research backend",version=__version__)
+    app.mount('/ui',StaticFiles(directory=Path(__file__).parent/'frontend',html=True),name='ui')
+    app.state.provider_key=None
+    app.state.provider_models=None
     demo_home=home/"causal_demo"
     gemma_home=home/"gemma_workspace"
     acceptance_root=home/"acceptance"
+
+    def provider_models():
+        return app.state.provider_models or [m.strip() for m in
+            (os.getenv('GEMINI_MODELS') or os.getenv('GEMMA_MODEL') or MODEL).split(',') if m.strip()] or [MODEL]
+
+    def provider_client(model=None):
+        if model is None and not app.state.provider_key and not app.state.provider_models and not os.getenv('GEMINI_MODELS'):
+            return GemmaClient()
+        return GemmaClient(key=app.state.provider_key,model=model or provider_models()[0])
 
     @app.middleware("http")
     async def local_only(request:Request,call_next):
@@ -64,14 +87,44 @@ def create_app(home: str|Path=".fluxos") -> FastAPI:
     @app.get('/')
     def index():
         return {'service':'FLUX//OS unified backend','status':'development-only',
-                'api_docs':'/docs','health':'/api/health'}
+                'api_docs':'/docs','health':'/api/health','console':'/ui/'}
 
     @app.get("/api/health")
     def health():
-        return {"running":True,"gemma_key_present":bool(os.getenv("GEMINI_API_KEY")),
-                "model":os.getenv('GEMMA_MODEL') or MODEL,"version":__version__,
+        models=provider_models()
+        return {"running":True,"gemma_key_present":bool(app.state.provider_key or os.getenv("GEMINI_API_KEY")),
+                "model":models[0],"models":models,"version":__version__,
                 "causal_demo_present":(demo_home/"state.sqlite3").exists(),
                 "mode":"LOCAL_DEVELOPMENT_ONLY"}
+
+    @app.post('/api/provider/configure')
+    def configure_provider(params:ProviderConfig):
+        models=[model.strip() for model in params.models]
+        if any(not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._-]{0,127}',model) for model in models):
+            raise HTTPException(422,'Use unprefixed model IDs containing letters, digits, dots, underscores or hyphens')
+        # Configuration belongs to this running app, without persisting secrets
+        # or changing unrelated app instances and benchmark environments.
+        app.state.provider_key=params.api_key
+        app.state.provider_models=models
+        return {'configured':True,'models':models,'key_present':True,'storage':'process_memory_only'}
+
+    @app.post('/api/protocol-test')
+    def protocol_test():
+        from .protocol_demo import run_conflict_test
+        return run_conflict_test()
+
+    @app.post('/api/chat')
+    def chat(params:ChatMessage):
+        errors=[]
+        models=provider_models()
+        for model in models:
+            try:
+                content=provider_client(model).generate([{'role':'user','parts':[{'text':params.message}]}],[],
+                    'You are the FLUX//OS conversational assistant. Answer briefly. Do not claim to edit files or run tools.')
+                reply='\n'.join(p.get('text','') for p in content.get('parts',[]) if p.get('text') and not p.get('thought'))
+                return {'model':model,'reply':reply or 'The model returned no text.','fallback_used':model!=models[0]}
+            except Exception as exc:errors.append({'model':model,'error':type(exc).__name__})
+        raise HTTPException(502,{'message':'All configured provider models failed','attempts':errors})
 
     @app.get("/api/demo")
     def snapshot():
@@ -154,7 +207,7 @@ def create_app(home: str|Path=".fluxos") -> FastAPI:
     @app.post("/api/gemma/run")
     def gemma_run(params:Goal):
         try:
-            client=GemmaClient()
+            client=provider_client()
         except ConfigError as e:
             raise HTTPException(422,str(e))
         mem,actor=project_reader()

@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "fluxos-hackday"
 version = "0.6.0"
-description = "Backend-only causal coding agent harness with sealed acceptance and conditional shared-memory edits"
+description = "Local causal coding agent harness with an operator console, sealed acceptance and conditional shared memory"
 requires-python = ">=3.11"
 dependencies = ["fastapi>=0.110", "uvicorn>=0.30", "httpx>=0.27", "pydantic>=2.7"]
 
@@ -17,6 +17,9 @@ fluxos = "fluxos.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+fluxos = ["frontend/*.html", "frontend/*.js", "frontend/*.css"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -1,15 +1,20 @@
 # FLUX//OS
 
-**A backend for coding agents that tracks changing inputs, independently checks candidate code, and commits accepted project revisions.**
+**A causal coding-agent harness: private workspaces, conditional shared memory, and independently checked project revisions.**
 
 ![Version](https://img.shields.io/badge/version-0.6.0-blue)
 ![Python](https://img.shields.io/badge/python-3.11%2B-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Status](https://img.shields.io/badge/status-research%20prototype-orange)
+[![Python tests](https://github.com/Bharath122babu/FLUX-OS-UNIFIED/actions/workflows/tests.yml/badge.svg)](https://github.com/Bharath122babu/FLUX-OS-UNIFIED/actions/workflows/tests.yml)
 
 FLUX//OS combines a Gemma tool-calling loop, private coding workspaces, Docker execution, and a SQLite causal commit kernel. It explores a practical question: **when requirements or source files change, can an agent preserve unaffected work while rejecting results built on stale inputs?**
 
-This is the **v0.6.0 backend-only shared-memory release**. It includes a CLI, FastAPI service, and project-scoped shared-memory tools for Gemma and its workers. There is no application frontend. Improvements in model accuracy, token efficiency, or task completion have not been established by a live comparative benchmark.
+This **v0.6.0 integrated release** includes a local operator console, FastAPI service, CLI, project-scoped shared-memory tools, and reproducible evaluation suites. The console provides provider setup, conversational chat, coding runs, and a real SQLite conflict probe. It ships inside the Python package and needs no frontend build step.
+
+> **A proposal is not a commit.** A model can suggest changes; the host checks the sealed candidate and the kernel decides whether it can become the accepted revision.
+
+**Evidence at a glance:** 921/921 recorded deterministic invariant checks passed. The eight-attempt real Gemma pilot passed **1/4 baseline tasks and 0/4 FLUX tasks**. It established no model-performance or cost advantage. See [measured results](#measured-results) before interpreting the demos.
 
 ## Contents
 
@@ -18,12 +23,14 @@ This is the **v0.6.0 backend-only shared-memory release**. It includes a CLI, Fa
 - [Shared memory](#shared-memory)
 - [Requirements](#requirements)
 - [Quick start](#quick-start)
+- [Operator console](#operator-console)
 - [Run a real coding task](#run-a-real-coding-task)
 - [Configuration](#configuration)
 - [CLI commands](#cli-commands)
 - [API reference](#api-reference)
 - [Project structure](#project-structure)
 - [Verification and testing](#verification-and-testing)
+- [Measured results](#measured-results)
 - [Reproducible benchmark suites](docs/BENCHMARKS.md)
 - [Security and limitations](#security-and-limitations)
 - [Troubleshooting](#troubleshooting)
@@ -51,6 +58,23 @@ The [benchmark framework](docs/BENCHMARKS.md) covers safety, selective reuse, co
 | Interrupted-job fencing | Stops cancelled or interrupted workers and their children from writing shared notes or claims using an obsolete generation. |
 
 The kernel is the single commit authority. Model output and a reported developer-test PASS cannot independently authorize publication.
+
+```mermaid
+flowchart LR
+    Operator[Local operator] --> UI[Browser console at /ui/]
+    Operator --> CLI[CLI and Python SDK]
+    UI --> API[FastAPI service]
+    API --> Agent[Bounded Gemma agent]
+    Agent <--> Google[Google model API]
+    Agent --> Tools[File and shared-memory tools]
+    Tools --> Candidate[Private candidate]
+    Tools --> Docker[Docker Python and Node]
+    Candidate --> Gate[Seal and acceptance gateway]
+    Gate --> Kernel[SQLite causal kernel]
+    CLI --> Kernel
+    Kernel --> Accepted[Accepted project history]
+    API --> Accepted
+```
 
 ## How it works
 
@@ -92,6 +116,26 @@ Notes and claims are **unverified coordination data**. They persist even when a 
 
 Inspect notes through `GET /api/projects/{project_id}/memory`. The trusted Python API additionally supports conditional whole-fact writes, JSON object patches, negative dependencies, and job reconciliation. See the [shared-memory guide](docs/SHARED_MEMORY_INTEGRATION_v0.6.0.md).
 
+### Why conditional writes matter
+
+Two workers can read the same field before either writes. A later write must still match the value it observed. The console's conflict probe executes this sequence against a temporary SQLite database; its comparison baseline is a last-write-wins Python dictionary. This is a deterministic mechanics demonstration, not a model benchmark or a concurrent load test.
+
+```mermaid
+sequenceDiagram
+    participant A as Worker A
+    participant K as SQLite kernel
+    participant B as Worker B
+    A->>K: Read decision and record hash H0
+    K-->>A: INITIAL
+    B->>K: Read decision and record hash H0
+    K-->>B: INITIAL
+    A->>K: Patch decision if hash equals H0
+    K-->>A: COMMITTED with new hash H1
+    B->>K: Patch decision if hash equals H0
+    K-->>B: STALE_REJECTED
+    Note over A,B: Compatible edits to separate fields can both commit
+```
+
 ## Requirements
 
 - **Python 3.11 or newer**, with `pip` and `venv`.
@@ -99,7 +143,7 @@ Inspect notes through `GET /api/projects/{project_id}/memory`. The trusted Pytho
 - For live model runs: a **`GEMINI_API_KEY`** with access to the model configured in `src/fluxos/agent.py`.
 - For candidate commands and independent acceptance: **Docker**, a running daemon capable of Linux containers, and the required images already pulled.
 
-Offline demos and unit/mock tests do not need an API key or Docker. On Windows, Docker must be configured for Linux containers. Local v0.6 tests returned **159 passed, 3 skipped, 0 failed**. The three symlink tests require Windows symlink privileges. See [v0.6 verification](docs/FINAL_VERIFICATION_v0.6.0.md) for scope and results.
+The console, offline demos, conflict probe, and unit/mock tests do not need an API key or Docker. On Windows, Docker must be configured for Linux containers. The three symlink tests require Windows symlink privileges. See [verification and testing](#verification-and-testing) for the current checks and their scope.
 
 ## Quick start
 
@@ -140,17 +184,31 @@ fluxos unified-demo
 
 The demo changes a source contract from `email` to `student_id`, marks the dependent frontend artifact stale, and repairs it while preserving the independent style artifact. Its JSON report includes `model_calls: 0` and `demo_type: DETERMINISTIC_FILE_HASH_DEPENDENCIES_NO_GEMMA`.
 
-### 3. Start the backend
+### 3. Open the operator console
 
 ```bash
 fluxos serve --home .fluxos --port 8765
 ```
 
+- **Operator console:** [http://127.0.0.1:8765/ui/](http://127.0.0.1:8765/ui/)
 - Interactive API documentation: [http://127.0.0.1:8765/docs](http://127.0.0.1:8765/docs)
 - Health check: [http://127.0.0.1:8765/api/health](http://127.0.0.1:8765/api/health)
 - Service descriptor: [http://127.0.0.1:8765/](http://127.0.0.1:8765/)
 
 The server binds to `127.0.0.1`. Keep it on a trusted local development machine.
+
+## Operator console
+
+![FLUX operator console after a successful SQLite conflict probe](docs/images/operator-console.jpg)
+
+1. Open `/ui/` and click **RUN CONFLICT PROBE**. No provider key, Docker, or model call is needed. The inspector should show the stale second FLUX write rejected.
+2. To use the model, enter a Google AI Studio key and your accessible model IDs, then click **CONNECT PROVIDER**. This configures the server and makes a real chat request to test the connection; provider quota may be consumed.
+3. Choose **CHAT** for conversation, or **AGENT RUN** to create a private coding candidate. Set the project ID to match your acceptance contract.
+4. Send with the button or **Ctrl+Enter**. Enter alone inserts a newline. Inspect the returned publication status and job ID.
+
+The default chat route tries `gemma-4-26b-a4b-it`, then `gemma-4-31b-it` if the first request fails. **Coding runs use the primary model only**, preserving model identity rather than silently switching it. Model access depends on your provider account. Health reports configuration presence; it does not validate credentials.
+
+Console configuration is held in the running app's memory, overrides its environment defaults, and is cleared on server restart. The password field is cleared after the connection attempt; the console does not write it to disk or browser storage. Project notes, candidates, and job events do persist under the state directory. See [console scope](docs/FRONTEND_SCOPE.md).
 
 ## Run a real coding task
 
@@ -229,7 +287,7 @@ Contracts support **1–12 cases** and a Python `.py` entrypoint. Stdout is comp
 fluxos serve --home .fluxos --port 8765
 ```
 
-In another terminal, use the interactive `/docs` page or send this request.
+Select **AGENT RUN** in the console, use the interactive `/docs` page, or send this request from another terminal.
 
 **Windows PowerShell**
 
@@ -276,8 +334,9 @@ On PowerShell, use `curl.exe` for these curl commands, or `Invoke-RestMethod` an
 
 | Setting | Default | How to set it |
 | --- | --- | --- |
-| API credential | Unset | `GEMINI_API_KEY` environment variable. Required only for real model runs. |
-| Model | `gemma-4-26b-a4b-it` | `GEMMA_MODEL` environment variable; an explicit `GemmaClient(model=...)` argument takes precedence. There is no CLI model flag. |
+| API credential | Unset | Console provider setup or `GEMINI_API_KEY`. Required only for real model calls. |
+| Primary model | `gemma-4-26b-a4b-it` | First console model, otherwise first `GEMINI_MODELS` entry, otherwise `GEMMA_MODEL`. The SDK also accepts an explicit model. |
+| Chat fallback models | Primary only from environment | Comma-separated `GEMINI_MODELS` or the console model list. The console initially offers both Gemma IDs. |
 | State directory | `.fluxos` | `fluxos serve --home <directory>` |
 | Server port | `8765` | `fluxos serve --port <port>` |
 | Server host | `127.0.0.1` | Fixed by the CLI launcher. |
@@ -294,7 +353,7 @@ State under `<home>` includes `gemma_state` for SQLite state, `gemma_workspace` 
 | `fluxos unified-demo` | Demonstrate file-hash dependencies, stale detection, and selective repair in a temporary directory. |
 | `fluxos demo --home .fluxos` | Run the causal demo and print before/change/repair statuses. |
 | `fluxos benchmark` | Report work units and timings for a fixed synthetic selective-repair workload; makes zero model calls. |
-| `fluxos serve --home .fluxos --port 8765` | Start the local FastAPI backend. |
+| `fluxos serve --home .fluxos --port 8765` | Start the API and packaged operator console. |
 | `fluxos --help` | Show commands and flags. |
 
 `benchmark` is an illustrative mechanics comparison. Its timing and work-unit counts do not establish model-quality or framework-performance improvement.
@@ -304,7 +363,11 @@ State under `<home>` includes `gemma_state` for SQLite state, `gemma_workspace` 
 | Method | Endpoint | Purpose |
 | --- | --- | --- |
 | `GET` | `/` | Backend service descriptor. |
+| `GET` | `/ui/` | Packaged operator console and static assets. |
 | `GET` | `/api/health` | Configuration summary and whether a model key is present; does not test the key or Docker. |
+| `POST` | `/api/provider/configure` | Configure this app's key and ordered models in memory; does not itself call the provider. |
+| `POST` | `/api/chat` | Make a conversational model request, with ordered fallback on failure. |
+| `POST` | `/api/protocol-test` | Run the temporary SQLite stale-write probe without model calls. |
 | `POST` | `/api/gemma/run` | Run a coding task against a project's accepted revision. |
 | `GET` | `/api/projects/{project_id}` | Read accepted head and revision history. |
 | `GET` | `/api/projects/{project_id}/export` | Download accepted source as a ZIP. |
@@ -327,12 +390,16 @@ State under `<home>` includes `gemma_state` for SQLite state, `gemma_workspace` 
 │   ├── cli.py            # fluxos command-line entrypoint
 │   ├── demo.py           # Causal facts/artifacts demonstration
 │   ├── executor.py       # Bounded Docker Python/Node execution
+│   ├── evaluation/      # Matched tasks, budgets, safety suites, reports
+│   ├── frontend/        # Packaged HTML, CSS, and JavaScript console
 │   ├── gateway.py        # Seal, evaluate, validate, and publish gate
 │   ├── kernel.py         # SQLite facts, artifacts, witnesses, jobs, project heads
+│   ├── protocol_demo.py  # Real SQLite conflict probe for the console
 │   ├── shared.py         # Project-scoped shared-memory tools and bounds
 │   └── unified_demo.py   # File-hash dependency demonstration
 ├── tests/                # Unit, regression, and mock integration tests
 ├── scripts/              # Readiness, 20-worker stress, and real Docker smoke checks
+├── benchmarks/           # Dashboard source and preserved experiment evidence
 ├── examples/
 │   ├── blackbox-acceptance/  # Current Python CLI acceptance example
 │   └── acceptance/           # Developer unittest example
@@ -353,11 +420,38 @@ fluxos unified-demo
 fluxos benchmark
 ```
 
-The v0.6 suite contains **162 test cases**. Local Windows verification returned **159 passed, 3 skipped, 0 failed**, with the three skips caused only by missing symlink privileges. The 20-worker stress test preserved all **240 disjoint edits**, with **zero lost updates**, and rejected 19 of 20 competing same-field writes.
+The suite contains **178 cases** and covers kernel invariants, publication boundaries, shared-memory tools, job fencing, evaluation budgets, and console/API integration. Local Windows verification returned **175 passed, 3 skipped, 0 failed**; the skips require symlink privileges. Current integration checks are recorded in [submission verification](docs/SUBMISSION_INTEGRATION_2026-10-18.md). The 20-worker stress test preserved all **240 disjoint edits**, with **zero lost updates**, and rejected 19 of 20 competing same-field writes.
 
 GitHub Actions runs the suite, stress check, and offline demos on Ubuntu and Windows with Python 3.11 and 3.12. The Ubuntu Python 3.12 job additionally runs `scripts/docker_acceptance_smoke.py` with actual Python and Node containers and a scripted model. This exercises accepted project revisions, shared-note reuse, ZIP export, and wrong-output rejection. It makes **zero live Gemma requests** and is not a container penetration test.
 
 See the [v0.6 verification record](docs/FINAL_VERIFICATION_v0.6.0.md), [current benchmark evidence](docs/BENCHMARKS.md), and [Windows Docker setup](docs/WINDOWS_DOCKER_SETUP.md). The supplied [v0.5 record](artifacts/VERIFICATION_v0.5.0.json), [v0.6 archive record](artifacts/VERIFICATION_v0.6.0.json), and [Windows repair history](docs/LOCAL_VERIFICATION_2026-10-18.md) are historical evidence. Docker-backed Gemma testing is now recorded; measured model-performance improvement remains unproven.
+
+## Measured results
+
+| Experiment | Recorded result | Interpretation |
+| --- | --- | --- |
+| Deterministic safety matrix | 921/921 invariant records passed | Tested kernel cases; records are not independent statistical trials. |
+| Concurrent compatible writes | 534/534 preserved | Zero lost updates in the recorded schedules. |
+| Stale candidates | 0/9 accepted | All nine tested stale candidates rejected. |
+| Selective invalidation | 57/57 stale artifacts identified; 0/23 false invalidations | Correct dependency classification in these generated workloads. |
+| Kernel artifact reuse | 23/23 eligible artifacts reused | Mechanics result; not a live-model reuse rate. |
+| Real Gemma pilot, protocol 1 | B0 1/4 verified tasks; F0 0/4 | No established FLUX completion, speed, or cost benefit. |
+
+The real pilot used four paired, controlled Python CLI tasks, one trial per arm, the same `gemma-4-26b-a4b-it` model, and matched budgets. The F0-minus-B0 completion difference was **−25 percentage points**, with a 95% task-cluster bootstrap interval of **−75 to 0 points**. Rate limits, provider errors, and missing outputs affected the study. All eight attempts remain in the [pilot readout and raw evidence](benchmarks/results/2026-10-18/gemma-pilot-v1/READOUT.md). Actual billed cost and exact aggregate token usage are unavailable.
+
+Protocol 2 adds required-output feedback, provider-directed retry delays, a shared cooldown, and corrected eligibility accounting. It has local and scripted Docker checks; it has **not** had a second real-model pilot. The 20-task catalog is a controlled microbenchmark, not a large-repository benchmark. A proposed 240-run study has not been executed.
+
+Reproduce the free checks or inspect a fresh plan:
+
+```bash
+python -m fluxos.evaluation deterministic --output .fluxos-benchmarks/kernel-new.json
+python -m fluxos.evaluation catalog
+python -m fluxos.evaluation plan --output .fluxos-benchmarks/pilot-plan-new.json
+python scripts/docker_acceptance_smoke.py
+python scripts/evaluation_docker_smoke.py
+```
+
+The last two commands require Docker and the images above, but make zero live model calls. Output paths must be new to preserve prior evidence. Live evaluation requires an explicit `--execute`; see [benchmark methodology](docs/BENCHMARKS.md) for budgets, arms B0/B1/F0/F1, uncertainty, and paid execution instructions.
 
 ## Security and limitations
 
@@ -370,7 +464,7 @@ This system is intended for **trusted, single-host local research**. Loopback ch
 - Event history is diagnostic metadata, not a replayable conversation checkpoint or an exactly-once execution guarantee.
 - Causal tracking covers recorded observations. Arbitrary command calls conservatively witness the whole registered source tree; hidden reads are not proven observable.
 
-Remaining work includes durable conversation resumption, automatic model-driven repair after stale rejection, an MCP stdio client, permission approvals, Git integration within the harness, PTY/background jobs, independent JS/TS/browser acceptance, live adversarial Docker tests, and same-model A/B evaluation.
+Remaining work includes durable conversation resumption, automatic model-driven repair after stale rejection, an MCP stdio client, permission approvals, Git integration within the harness, PTY/background jobs, independent JS/TS/browser acceptance, live adversarial Docker tests, and a larger matched model evaluation.
 
 ## Troubleshooting
 
@@ -378,7 +472,7 @@ Remaining work includes durable conversation resumption, automatic model-driven 
 | --- | --- |
 | `fluxos` is not recognized | Activate the virtual environment and rerun `python -m pip install -e ".[test]"`. Alternatively use `python -m fluxos.cli unified-demo`. |
 | PowerShell blocks activation | Invoke `.\.venv\Scripts\python.exe` and `.\.venv\Scripts\fluxos.exe` directly. |
-| Model endpoint returns HTTP 422 for missing configuration | Set `GEMINI_API_KEY` before launching the server. |
+| Model endpoint returns HTTP 422 for missing configuration | Connect through the console or set `GEMINI_API_KEY` before launching the server. |
 | Provider rejects a request | Check the configured model, credential access, and quota with your provider. Key presence in `/api/health` does not establish validity. |
 | Commands are unavailable or fail | Confirm `docker info` works and the selected image is present. The harness does not pull images or run commands on the host. |
 | Run produces a `DRAFT` | Inspect verification details; ensure the contract matches the project ID, the Python entrypoint exists, Docker is ready, and exact outputs pass. |
@@ -389,6 +483,10 @@ Remaining work includes durable conversation resumption, automatic model-driven 
 
 ## Documentation
 
+- [Console scope](docs/FRONTEND_SCOPE.md) — UI actions, provider calls, and credential lifecycle.
+- [Submission integration](docs/SUBMISSION_INTEGRATION_2026-10-18.md) — new archive integration and current validation.
+- [Benchmark methodology and results](docs/BENCHMARKS.md) — current measured evidence and reproducible commands.
+- [Project overview](docs/PROJECT_OVERVIEW.md) — motivation, components, and demonstration flow.
 - [v0.6.0 release notes](docs/RELEASE_NOTES_v0.6.0.md) — current changes and remaining release gates.
 - [Shared-memory integration](docs/SHARED_MEMORY_INTEGRATION_v0.6.0.md) — model tools, isolation, conditional writes, and limitations.
 - [v0.6 final verification](docs/FINAL_VERIFICATION_v0.6.0.md) — current evidence and live-test readiness.

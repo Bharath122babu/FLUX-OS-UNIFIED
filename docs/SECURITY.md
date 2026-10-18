@@ -4,6 +4,12 @@
 
 The trust boundary is operator-owned Python code + SQLite kernel versus model-proposed file writes, tool parameters and candidate processes. There is no cryptographically authenticated client identity or hardened separation between the trusted gateway and kernel. Use loopback only; never deploy to the public internet.
 
+## Operator console and provider configuration
+
+The packaged console is served at `/ui/` by the same loopback API. Provider setup stores the credential and ordered models on that running FastAPI app's state, without writing the key to disk or changing the process environment. Responses return key presence, never the key. The password input is cleared after the connection attempt; browser storage is not used. Local processes with access to the server remain trusted: this is not a credential vault or an authenticated multi-user service.
+
+The console's connection button configures the provider and makes a real chat request. Chat tries the configured model list in order; coding runs use only its first model. Chat failures report exception types without provider response bodies. The deterministic protocol probe uses a temporary SQLite database and makes no provider requests.
+
 ## Shared-memory tools
 
 - Model-facing keys are derived by the host from the project or task identifier. Children inherit their parent's namespace. This is local project scoping, not authenticated multi-tenancy.
@@ -20,7 +26,7 @@ The trust boundary is operator-owned Python code + SQLite kernel versus model-pr
 - Candidate bytes are sealed before evaluation and rehashed after evaluation and before SQLite publication. The kernel checks the accepted snapshot on commit and reads.
 - An operator contract hash is checked after acceptance when the black-box runner supplies the contract path; contracts are scoped to `acceptance/<project_id>/cases.json`.
 - Existing candidate file edits require SHA-256 preimages. Multi-file staged candidate writes reject mismatched preimages without leaking partial files in ordinary error paths.
-- Docker-only command tool constructs no-network, resource-limited and unprivileged container invocations. These arguments were mock-tested; the daemon itself was **unavailable** for live execution.
+- Docker-only command tool constructs no-network, resource-limited and unprivileged container invocations. These arguments have mock coverage and real Docker smoke checks. Scripted reference-model acceptance and an eight-attempt live Gemma pilot have run; this is not container penetration testing.
 - Unmediated model command reads are pessimistically witnessed against the entire registered source tree.
 - Permission checks, job-generation ownership, project-head compare-and-set and causal manifests remain in SQLite.
 
@@ -38,4 +44,4 @@ The trust boundary is operator-owned Python code + SQLite kernel versus model-pr
 
 ## Required release gate for wider deployment
 
-Authenticate identities, configure an isolated worker host, live Docker adversarial tests, immutable artifact storage, durable workflow recovery, tenant isolation, limits and observability, real model end-to-end testing, and cross-language acceptance. See `RELEASE_NOTES_v0.5.0.md`.
+Authenticate identities, configure an isolated worker host, live Docker adversarial tests, immutable artifact storage, durable workflow recovery, tenant isolation, limits and observability, larger matched model testing, and cross-language acceptance. See `RELEASE_NOTES_v0.5.0.md`.

@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>FLUX//OS · Operator Console</title>
+  <link rel="stylesheet" href="/ui/styles.css?v=console-2">
+</head>
+<body>
+  <div class="noise"></div>
+  <div class="console-shell">
+    <header class="masthead">
+      <div class="brand-lockup"><div class="brand-mark"><i></i><i></i><i></i></div><div><div class="brand">FLUX<span>//</span>OS</div><div class="strap">CAUSAL AGENT OPERATING SYSTEM</div></div></div>
+      <div class="mast-meta"><span class="live-dot"></span><span id="health">CONNECTING</span><span class="divider"></span><span>LOCAL / 127.0.0.1</span></div>
+    </header>
+
+    <div class="status-strip"><span>WORKSPACE <b>DEMO</b></span><span>PROTOCOL <b>CAUSAL-06</b></span><span>MODEL <b id="model-label">GEMINI</b></span><span class="strip-right">RUN <b id="run-state">READY</b></span></div>
+
+    <div class="workspace-grid">
+      <aside class="rail">
+        <section class="rail-block provider-block">
+          <div class="block-kicker"><span>01</span><b>PROVIDER</b><span id="key-state" class="state">OFFLINE</span></div>
+          <p class="rail-copy">A local credential bridge for model calls. Nothing is persisted by this console.</p>
+          <label>API KEY<input id="api-key" type="password" autocomplete="off" placeholder="Paste Google AI Studio key"></label>
+          <label>CHAT FALLBACK ROUTE<input id="models" value="gemma-4-26b-a4b-it,gemma-4-31b-it"></label>
+          <button id="configure" class="action action-primary">CONNECT PROVIDER <span>↗</span></button>
+          <div id="provider-result" class="result" aria-live="polite"></div>
+        </section>
+        <section class="rail-block test-block">
+          <div class="block-kicker"><span>02</span><b>INSTRUMENT</b></div>
+          <p class="rail-copy">Run the deterministic contention probe against the actual SQLite kernel.</p>
+          <button id="protocol" class="action action-outline">RUN CONFLICT PROBE <span>→</span></button>
+        </section>
+        <section class="rail-block rail-links">
+          <a href="/docs">OPEN API REFERENCE <span>↗</span></a><a href="/api/health">INSPECT HEALTH JSON <span>↗</span></a>
+        </section>
+        <div class="rail-foot">FLUX//OS v0.6.0<br><span>RESEARCH BUILD · LOOPBACK ONLY</span></div>
+      </aside>
+
+      <main class="workbench">
+        <div class="workbench-head"><div><span class="eyebrow">AGENT WORKBENCH / 001</span><h1>Command center</h1></div><div class="head-mark">F<sup>06</sup></div></div>
+        <div id="setup-banner" class="setup-banner"><span class="warning-mark">!</span><div><b>Provider connection required</b><small>Connect Gemini in the left rail before sending a chat or agent run.</small></div><button id="focus-setup" class="mini-button">GO TO SETUP</button></div>
+        <section id="conversation" class="conversation" aria-live="polite"><div class="empty-state"><div class="empty-index">/</div><h2>Make a move.</h2><p>Ask a question, run an agent, or probe the commit protocol. Every result is returned with its boundary visible.</p><div class="empty-line"><span></span><small>READY FOR INPUT</small><span></span></div></div></section>
+        <section class="run-inspector"><div class="inspector-top"><span><b>RUN TELEMETRY</b> <em>/</em> <span id="job-label">NO ACTIVE JOB</span></span><span class="telemetry-dot"></span></div><div id="details" class="details" aria-live="polite">Execution results and acceptance evidence will appear here.</div></section>
+        <form id="composer" class="command-bar"><div class="command-top"><label>MODE<select id="mode"><option value="chat">CHAT</option><option value="agent">AGENT RUN</option></select></label><label>PROJECT<input id="project" value="demo"></label><span id="hint">CONNECT PROVIDER TO BEGIN</span></div><textarea id="prompt" required placeholder="Enter a message or describe the task…"></textarea><div class="command-bottom"><span>CTRL+ENTER TO SEND · ENTER FOR NEW LINE</span><button id="send" class="action action-primary" type="submit">SEND COMMAND <span>↗</span></button></div></form>
+      </main>
+
+      <aside class="evidence-rail">
+        <div class="evidence-title"><span class="eyebrow">SYSTEM NOTES</span><span>LIVE</span></div>
+        <div class="signal"><span class="signal-number">01</span><div><b>PRIVATE CANDIDATE</b><p>Agent changes stay isolated until accepted.</p></div></div>
+        <div class="signal"><span class="signal-number">02</span><div><b>CAUSAL WITNESS</b><p>Writes are checked against what the worker read.</p></div></div>
+        <div class="signal"><span class="signal-number">03</span><div><b>SEALED ACCEPTANCE</b><p>Model-reported PASS cannot publish on its own.</p></div></div>
+        <div class="rail-quote">“A proposal is not a commit.”</div>
+        <div class="evidence-footer"><span>CONDITIONAL SHARED WRITES</span><span>SEALED ACCEPTANCE</span></div>
+      </aside>
+    </div>
+  </div>
+  <script src="/ui/app.js?v=console-2"></script>
+</body>
+</html>
