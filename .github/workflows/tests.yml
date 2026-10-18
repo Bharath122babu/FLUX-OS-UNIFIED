@@ -33,3 +33,6 @@ jobs:
       - name: Real Docker acceptance and project reuse
         if: matrix.os == 'ubuntu-latest' && matrix.python == '3.12'
         run: python scripts/docker_acceptance_smoke.py
+      - name: Real Docker paired evaluator (scripted, zero API calls)
+        if: matrix.os == 'ubuntu-latest' && matrix.python == '3.12'
+        run: python scripts/evaluation_docker_smoke.py

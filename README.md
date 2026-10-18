@@ -24,6 +24,7 @@ This is the **v0.6.0 backend-only shared-memory release**. It includes a CLI, Fa
 - [API reference](#api-reference)
 - [Project structure](#project-structure)
 - [Verification and testing](#verification-and-testing)
+- [Reproducible benchmark suites](docs/BENCHMARKS.md)
 - [Security and limitations](#security-and-limitations)
 - [Troubleshooting](#troubleshooting)
 - [Documentation](#documentation)
@@ -31,6 +32,8 @@ This is the **v0.6.0 backend-only shared-memory release**. It includes a CLI, Fa
 - [License](#license)
 
 ## Features
+
+The [benchmark framework](docs/BENCHMARKS.md) now covers safety, selective reuse, concurrent writes, matched AI tasks, and adversarial crash boundaries. The saved deterministic experiment preserved **534/534 compatible writes**, rejected **9/9 stale candidates**, and reused **23/23 eligible artifacts**. These are kernel measurements. The approved four-task B0/F0 Gemma pilot is pending Docker-backed acceptance; no comparative AI completion or cost gain is claimed.
 
 | Capability | Behavior in v0.6.0 |
 | --- | --- |

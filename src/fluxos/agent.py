@@ -362,7 +362,7 @@ class Workspace:
                 return {"status":"FAIL","reason":"Unparseable trusted runner result: "+str(exc)[:120]}
 
 
-    def run_blackbox(self, contract_dir: Path) -> dict:
+    def run_blackbox(self, contract_dir: Path, *, deadline: float | None = None) -> dict:
         """Evaluate a Python CLI as an external process, without importing candidate code.
 
         cases.json is operator-owned, never mounted as writable model input.
@@ -393,6 +393,9 @@ class Workspace:
         before=self.file_manifest()
         count=0
         for index,item in enumerate(cases):
+            remaining=20 if deadline is None else min(20,deadline-time.perf_counter())
+            if remaining<=0:
+                return {'status':'TIMEOUT','test_count':count,'reason':'acceptance deadline reached'}
             if not isinstance(item,dict) or any(k not in item for k in ("stdin","stdout")):
                 return {"status":"INVALID_CONTRACT","reason":"Missing case fields"}
             stdin,expected=item["stdin"],item["stdout"]
@@ -412,7 +415,7 @@ class Workspace:
                      "-w","/tmp","python:3.12-alpine","python","-I","-B",
                      "/work/"+entry]
             try:
-                result=subprocess.run(command,input=stdin,capture_output=True,text=True,timeout=20)
+                result=subprocess.run(command,input=stdin,capture_output=True,text=True,timeout=remaining)
             except subprocess.TimeoutExpired:
                 try:
                     subprocess.run(["docker","rm","-f",name],capture_output=True,timeout=8)
