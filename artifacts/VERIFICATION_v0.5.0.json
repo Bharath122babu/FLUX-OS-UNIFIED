@@ -1,0 +1,16 @@
+{
+  "release": "0.5.0",
+  "test_suite": "104 passed, 0 failed with PYTHONPATH=src",
+  "tests_kind": "Local unit/mock integration tests, including mocked Docker and mocked Gemma",
+  "accepted_boundary": "Immutable sealed candidate evaluated only by trusted in-process black-box callback",
+  "wheel": "fluxos_hackday-0.5.0-py3-none-any.whl built and installed in a clean virtual environment with local dependencies supplied",
+  "api_smoke": "/ /docs /api/health /api/projects/x all returned HTTP 200",
+  "demo": "Deterministic unified-demo executed successfully; 0 model calls",
+  "docker_status": "NOT_AVAILABLE: docker command absent",
+  "gemma_status": "NOT_TESTED: no API call performed",
+  "mcp_status": "NOT_IMPLEMENTED",
+  "durable_conversation_resume": "NOT_IMPLEMENTED: event journaling only",
+  "automatic_causal_repair": "NOT_IMPLEMENTED in real Gemma loop",
+  "ui": "not included: backend-only",
+  "open_code_reuse": "Architecture patterns studied; no direct OpenCode/OpenHands code copied"
+}

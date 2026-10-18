@@ -1,0 +1,1 @@
+Build main.py, a Python command-line program that reads two integers on stdin and prints their sum. Accept single-line input such as "2 3". Print only the answer followed by a newline. Make it work for negative integers too.

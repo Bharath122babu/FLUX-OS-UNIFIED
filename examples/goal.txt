@@ -1,0 +1,1 @@
+Create a Python module called unit_converter.py with Celsius-to-Fahrenheit and Fahrenheit-to-Celsius functions. Create tests/test_unit_converter.py with unittest tests covering freezing point, boiling point, and a round trip. Run tests using the tool if Docker is available. Report limitations accurately.

@@ -1,0 +1,8 @@
+{
+  "entry": "main.py",
+  "cases": [
+    {"stdin": "2 3\n", "stdout": "5\n", "exit_code": 0},
+    {"stdin": "10 25\n", "stdout": "35\n", "exit_code": 0},
+    {"stdin": "-5 7\n", "stdout": "2\n", "exit_code": 0}
+  ]
+}
