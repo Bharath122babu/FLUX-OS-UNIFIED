@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 LEVELS = {"public": 0, "internal": 1, "secret": 2}
+ABSENT_WITNESS_HASH = hashlib.sha256(b"fluxos:absent-json-field:v1").hexdigest()
 
 
 class FluxError(Exception):
@@ -54,6 +55,22 @@ def projection(obj: Any, pointer: str) -> Any:
         else:
             obj = obj[key]
     return obj
+
+
+def witness_hash(obj: Any, pointer: str) -> str:
+    """Hash an observed JSON leaf; only an absent FINAL object key is negative."""
+    if pointer == "":
+        return digest(obj)
+    if not pointer.startswith("/"):
+        raise ValueError("invalid JSON pointer")
+    parts=[v.replace("~1","/").replace("~0","~") for v in pointer[1:].split("/")]
+    parent=obj
+    for part in parts[:-1]:
+        parent=parent[int(part)] if isinstance(parent,list) else parent[part]
+    if isinstance(parent,dict) and parts[-1] not in parent:
+        return ABSENT_WITNESS_HASH
+    leaf=parent[int(parts[-1])] if isinstance(parent,list) else parent[parts[-1]]
+    return digest(leaf)
 
 
 @dataclass(frozen=True)
@@ -125,6 +142,12 @@ class Memory:
             CREATE INDEX IF NOT EXISTS execution_by_job ON execution_events(job_id,seq);
             CREATE TABLE IF NOT EXISTS jobs(id TEXT PRIMARY KEY, scope TEXT, task TEXT,
               state TEXT, parent_id TEXT, owner TEXT, created REAL, generation INTEGER NOT NULL DEFAULT 0);
+            CREATE TABLE IF NOT EXISTS claims(
+              scope TEXT NOT NULL, id TEXT NOT NULL, subject TEXT NOT NULL,
+              predicate TEXT NOT NULL, value TEXT NOT NULL, value_hash TEXT NOT NULL,
+              source TEXT NOT NULL, author TEXT NOT NULL, level INTEGER NOT NULL,
+              created REAL NOT NULL, PRIMARY KEY(scope,id));
+            CREATE INDEX IF NOT EXISTS claims_by_slot ON claims(scope,subject,predicate);
             """)
             # Older release has no authority witnesses; legacy rows are treated as
             # uncertified rather than silently assuming authorization continuity.
@@ -144,8 +167,18 @@ class Memory:
     def _record(c, kind: str, **details):
         c.execute("INSERT INTO events(ts,kind,details) VALUES(?,?,?)", (time.time(), kind, compact(details)))
 
+    @staticmethod
+    def _check_job_fences(c,actor:Principal,fences):
+        if len(fences)>2:
+            raise ValueError('at most a worker and parent job fence are supported')
+        for job_id,generation in fences:
+            job=c.execute('SELECT * FROM jobs WHERE id=?',(job_id,)).fetchone()
+            if (job is None or job['state']!='RUNNING' or job['scope']!=actor.scope or
+                job['owner']!=actor.name or type(generation) is not int or job['generation']!=generation):
+                raise Stale('shared-memory job ownership/generation fence no longer current')
+
     def _put_fact_tx(self, c, actor: Principal, key: str, payload: str,
-                     lvl: int, old=None) -> int:
+                     lvl: int, old=None, origin_author: str | None = None) -> int:
         """One canonical fact publication transition; caller owns BEGIN IMMEDIATE."""
         if old is None:
             old = c.execute("SELECT h.version,f.level FROM heads h JOIN facts f ON "
@@ -157,7 +190,10 @@ class Memory:
                 raise Denied("classification downgrade requires declassifier")
         version = (old["version"] if old else 0) + 1
         c.execute("INSERT INTO facts VALUES(?,?,?,?,?,?,?)",
-                  (actor.scope, key, version, payload, hashlib.sha256(payload.encode()).hexdigest(), lvl, actor.name))
+                  (actor.scope, key, version, payload, hashlib.sha256(payload.encode()).hexdigest(), lvl,
+                   # For field-merged revisions the original authority is retained;
+                   # the actual editor is preserved separately in the event journal.
+                   origin_author or actor.name))
         c.execute("INSERT INTO heads VALUES(?,?,?) ON CONFLICT(scope,key) DO UPDATE SET version=excluded.version",
                   (actor.scope, key, version))
         affected = self._invalidate_dependents(c, actor.scope, "fact", key)
@@ -165,16 +201,201 @@ class Memory:
         return version
 
     def put_fact(self, actor: Principal, key: str, value: Any,
-                 label: str = "internal") -> int:
+                 label: str = "internal", *, expected_version: int | None = None,
+                 job_fences=()) -> int:
+        if expected_version is not None and (type(expected_version) is not int or expected_version<0):
+            raise ValueError("expected_version must be a nonnegative integer")
         if label not in LEVELS:
             raise ValueError("unknown classification")
         lvl = LEVELS[label]
         self._role(actor, "writer", actor.scope, lvl)
         with self._conn() as c:
             c.execute("BEGIN IMMEDIATE")
-            version = self._put_fact_tx(c, actor, key, compact(value), lvl)
+            self._check_job_fences(c,actor,job_fences)
+            old = c.execute("SELECT h.version,f.level FROM heads h JOIN facts f ON "
+                            "(h.scope=f.scope AND h.key=f.key AND h.version=f.version) "
+                            "WHERE h.scope=? AND h.key=?",(actor.scope,key)).fetchone()
+            current = old["version"] if old else 0
+            if old is not None:
+                # Check access before reporting any secret head/version detail.
+                self._role(actor,"writer",actor.scope,old["level"])
+            # No blind writes by ordinary workers. An explicitly privileged
+            # in-process coordinator may publish authoritative changes without a
+            # preimage (e.g. incoming user requirements). Caller-created roles are
+            # NOT authentication; never expose Principal construction to models.
+            if expected_version is None and "coordinator" not in actor.roles:
+                raise Stale("fact update requires an expected_version")
+            if expected_version is not None and expected_version != current:
+                raise Stale(f"fact changed: expected {expected_version}, current {current}")
+            version = self._put_fact_tx(c, actor, key, compact(value), lvl, old)
             c.execute("COMMIT")
             return version
+
+    def fact_head(self, actor: Principal, key: str) -> dict:
+        """Return a witnessed snapshot for an optimistic edit, not a mutable reference."""
+        with self._conn() as c:
+            row = c.execute("SELECT f.* FROM facts f JOIN heads h ON "
+                            "f.scope=h.scope AND f.key=h.key AND f.version=h.version "
+                            "WHERE f.scope=? AND f.key=?",(actor.scope,key)).fetchone()
+            if row is None:
+                raise KeyError(key)
+            self._role(actor,"reader",actor.scope,row["level"])
+            if hashlib.sha256(row["payload"].encode()).hexdigest()!=row["hash"]:
+                raise IntegrityError("fact head payload damaged")
+            return {"key":key,"version":row["version"],"value":json.loads(row["payload"]),
+                    "label":next(k for k,v in LEVELS.items() if v==row["level"]),
+                    "authority":self._authority(row["level"],row["author"])}
+
+    @staticmethod
+    def _pointer_parts(pointer: str) -> list[str]:
+        """Strict JSON-object pointers. Arrays are intentionally not patched."""
+        if not isinstance(pointer,str) or not pointer.startswith("/") or len(pointer)>512:
+            raise ValueError("patch path must be a bounded JSON pointer")
+        raw=pointer[1:].split("/")
+        if len(raw)>16 or any(not part for part in raw):
+            raise ValueError("patch path depth/empty component forbidden")
+        for part in raw:
+            if "~" in part.replace("~0","").replace("~1",""):
+                raise ValueError("invalid JSON pointer escape")
+        return [part.replace("~1","/").replace("~0","~") for part in raw]
+
+    def patch_fact(self, actor: Principal, key: str, changes: list[dict],
+                   *, read_manifest: list[dict] | None = None,
+                   return_snapshot: bool = False,job_fences=()) -> int | dict:
+        """Single atomic conditional patch: disjoint edits commute without lost updates.
+
+        Each operation carries `path`, `expected_hash` (digest of previously
+        witnessed value, or None for absence), and `value`.  The caller MUST
+        observe the exact field; guessing a hash is not a semantic read proof.
+        Whole-record dependent reasoning belongs in read_manifest and is rejected
+        if any of those inputs changed.  Conflicting same-field edits fail closed.
+        """
+        if not isinstance(changes,list) or not 1 <= len(changes) <= 64:
+            raise ValueError("patch requires 1..64 operations")
+        if read_manifest is not None and (not isinstance(read_manifest,list) or len(read_manifest)>256):
+            raise ValueError("read_manifest must be a list of at most 256 witnesses")
+        parsed=[]
+        for operation in changes:
+            if not isinstance(operation,dict) or set(operation)!={"path","expected_hash","value"}:
+                raise ValueError("patch operation requires exactly path, expected_hash, value")
+            parts=self._pointer_parts(operation["path"])
+            witness=operation["expected_hash"]
+            if witness is not None and (not isinstance(witness,str) or len(witness)!=64 or
+                                        any(ch not in "0123456789abcdef" for ch in witness)):
+                raise ValueError("expected_hash must be SHA-256 or None for absent field")
+            parsed.append((parts,witness,operation["value"]))
+        for i,(a,*_) in enumerate(parsed):
+            for b,*_ in parsed[:i]:
+                if a[:len(b)]==b or b[:len(a)]==a:
+                    raise ValueError("overlapping patch paths")
+        self._role(actor,"writer",actor.scope)
+        with self._conn() as c:
+            c.execute("BEGIN IMMEDIATE")
+            self._check_job_fences(c,actor,job_fences)
+            row=c.execute("SELECT f.* FROM facts f JOIN heads h ON "
+                          "f.scope=h.scope AND f.key=h.key AND f.version=h.version "
+                          "WHERE f.scope=? AND f.key=?",(actor.scope,key)).fetchone()
+            if row is None:
+                raise KeyError(key)
+            self._role(actor,"reader",actor.scope,row["level"])
+            self._role(actor,"writer",actor.scope,row["level"])
+            if hashlib.sha256(row["payload"].encode()).hexdigest()!=row["hash"]:
+                raise IntegrityError("fact payload damaged")
+            # Validate causal reads under exactly the same writer lock as patch.
+            if read_manifest:
+                self._check_manifest(c,actor,"__patch__",read_manifest,row["level"])
+            value=json.loads(row["payload"])
+            if not isinstance(value,dict):
+                raise ValueError("field patches require a JSON object")
+            # Validate all preimages BEFORE changing anything.
+            for parts,expected,new_value in parsed:
+                obj=value
+                for field in parts[:-1]:
+                    if not isinstance(obj,dict) or field not in obj:
+                        raise Stale("patch parent path missing")
+                    obj=obj[field]
+                if not isinstance(obj,dict):
+                    raise ValueError("patch target parent must be an object")
+                present=parts[-1] in obj
+                actual=digest(obj[parts[-1]]) if present else None
+                if actual!=expected:
+                    raise Stale("field changed since it was observed")
+            for parts,expected,new_value in parsed:
+                obj=value
+                for field in parts[:-1]:obj=obj[field]
+                obj[parts[-1]]=new_value
+            payload=compact(value)
+            if len(payload)>1_000_000:
+                raise ValueError("patched fact too large")
+            # Origin authority continuity is maintained for same-scope editors;
+            # editor identity, paths, and revision are preserved in audit events.
+            version=self._put_fact_tx(c,actor,key,payload,row["level"],row,
+                                      origin_author=row["author"])
+            self._record(c,"fact.patched",scope=actor.scope,key=key,version=version,
+                         editor=actor.name,paths=[op[0] for op in parsed])
+            snapshot={"key":key,"version":version,"value":value,
+                      "authority":self._authority(row["level"],row["author"])}
+            c.execute("COMMIT")
+            # Return the exact committed state, never a second raced head read.
+            return snapshot if return_snapshot else version
+
+    def record_claim(self, actor: Principal, subject: str, predicate: str, value: Any,
+                     source: str, *, label: str = "internal",job_fences=()) -> dict:
+        """An evidence-labelled assertion; conflicts are surfaced, never 'solved' by recency.
+
+        This is intentionally not a truth oracle. A claim has an immutable ID;
+        mutually different values in the same subject/predicate slot are DISPUTED.
+        """
+        if label not in LEVELS: raise ValueError("unknown classification")
+        level=LEVELS[label]
+        self._role(actor,"writer",actor.scope,level)
+        if any(not isinstance(x,str) or not x.strip() or len(x)>200
+               for x in (subject,predicate,source)):
+            raise ValueError("subject, predicate and evidence source are required")
+        payload=compact(value)
+        if len(payload)>32_000: raise ValueError("claim value too large")
+        claim_id=uuid.uuid4().hex
+        with self._conn() as c:
+            c.execute("BEGIN IMMEDIATE")
+            self._check_job_fences(c,actor,job_fences)
+            c.execute("INSERT INTO claims VALUES(?,?,?,?,?,?,?,?,?,?)",
+                      (actor.scope,claim_id,subject,predicate,payload,digest(value),
+                       source,actor.name,level,time.time()))
+            # Never leak the existence of a higher-clearance assertion through
+            # the conflict status returned to this editor.
+            visible=c.execute(
+                "SELECT value,value_hash FROM claims WHERE scope=? AND subject=? AND predicate=? AND level<=?",
+                (actor.scope,subject,predicate,actor.clearance)).fetchall()
+            hashes=self._claim_hashes(visible)
+            status="DISPUTED" if len(hashes)>1 else "UNCONTESTED"
+            self._record(c,"claim.added",scope=actor.scope,id=claim_id,
+                         subject=subject,predicate=predicate,status=status)
+            c.execute("COMMIT")
+        return {"id":claim_id,"status":status}
+
+    def claims(self, actor: Principal, subject: str, predicate: str) -> dict:
+        """Permission-filtered claims. Hidden claims are not exposed through status."""
+        self._role(actor,"reader",actor.scope)
+        with self._conn() as c:
+            available=c.execute("SELECT id,value,value_hash,source,author,level,created FROM claims "
+                           "WHERE scope=? AND subject=? AND predicate=? AND level<=? ORDER BY created,id",
+                           (actor.scope,subject,predicate,actor.clearance)).fetchall()
+            variants=self._claim_hashes(available)
+            return {"status":("UNAVAILABLE" if not available else
+                              "DISPUTED" if len(variants)>1 else "UNCONTESTED"),
+                    "claims":[{"id":r["id"],"value":json.loads(r["value"]),
+                               "source":r["source"],"author":r["author"],"created":r["created"]}
+                              for r in available]}
+
+    @staticmethod
+    def _claim_hashes(rows) -> set[str]:
+        hashes=set()
+        for row in rows:
+            actual=hashlib.sha256(row["value"].encode()).hexdigest()
+            if actual!=row["value_hash"]:
+                raise IntegrityError("claim payload damaged")
+            hashes.add(actual)
+        return hashes
 
     @staticmethod
     def _authority(level: int, author: str) -> str:
@@ -193,7 +414,7 @@ class Memory:
             if hashlib.sha256(ref["payload"].encode()).hexdigest()!=ref["hash"]:
                 raise IntegrityError("fact dependency hash mismatch")
             try:
-                return digest(projection(json.loads(ref["payload"]),dependency["pointer"]))==dependency["expected_hash"]
+                return witness_hash(json.loads(ref["payload"]),dependency["pointer"])==dependency["expected_hash"]
             except (KeyError,ValueError,IndexError,TypeError):
                 return False
         if dependency["kind"] == "artifact":
@@ -423,7 +644,11 @@ class Memory:
             kind,src = d["kind"],d["source"]
             if kind == "fact":
                 obj,ver,dep_level,dep_author = self._read_fact(c,actor,src)
-                if digest(projection(obj,d["pointer"])) != d["expected_hash"]:
+                try:
+                    actual=witness_hash(obj,d["pointer"])
+                except (KeyError,IndexError,ValueError,TypeError) as exc:
+                    raise Stale(f"fact {src} path changed") from exc
+                if actual != d["expected_hash"]:
                     raise Stale(f"fact {src} changed")
                 authority=self._authority(dep_level,dep_author)
             elif kind == "artifact":
@@ -552,9 +777,13 @@ class Memory:
         if not isinstance(project_id,str) or not __import__("re").fullmatch(r"[A-Za-z0-9_-]{1,64}",project_id):
             raise ValueError("invalid project ID")
         with self._conn() as c:
+            rows=c.execute("SELECT r.revision,r.output_id,r.created,a.level "
+                           "FROM project_revisions r JOIN artifacts a "
+                           "ON a.scope=r.scope AND a.id=r.output_id AND a.version=r.artifact_version "
+                           "WHERE r.scope=? AND r.project_id=? ORDER BY r.revision",
+                           (actor.scope,project_id)).fetchall()
             return [{"revision":r["revision"],"output_id":r["output_id"],"created":r["created"]}
-                    for r in c.execute("SELECT * FROM project_revisions WHERE scope=? AND project_id=? ORDER BY revision",
-                                       (actor.scope,project_id))]
+                    for r in rows if r["level"] <= actor.clearance]
 
     def record_execution(self,job_id:str,step:int,kind:str,details:dict) -> None:
         """Durable diagnostics, not replay-safe tool execution or conversation resume."""
@@ -644,6 +873,32 @@ class Memory:
             c.execute("COMMIT")
             return epoch
 
+    def reconcile_interrupted_jobs(self, scope: str, *, owner: str | None = None) -> list[str]:
+        """Quarantine orphaned work after restart; NEVER replay opaque tool effects.
+
+        Invoke from a sole trusted coordinator only, after previous workers have
+        been stopped. Generation increments fence off any delayed publications.
+        Callers may create a NEW job based on an inspected checkpoint; this
+        method never guesses whether an external effect happened.
+        """
+        with self._conn() as c:
+            c.execute("BEGIN IMMEDIATE")
+            where="scope=? AND state='RUNNING'"
+            params=[scope]
+            if owner is not None:
+                where+=" AND owner=?"
+                params.append(owner)
+            rows=c.execute(f"SELECT id,generation FROM jobs WHERE {where}",params).fetchall()
+            ids=[]
+            for row in rows:
+                c.execute("UPDATE jobs SET state='INTERRUPTED',generation=generation+1 WHERE id=?",
+                          (row["id"],))
+                ids.append(row["id"])
+                self._record(c,"job.interrupted",scope=scope,id=row["id"],
+                             generation=row["generation"]+1)
+            c.execute("COMMIT")
+            return ids
+
     def jobs(self,scope: str = "demo") -> list[dict]:
         with self._conn() as c:
             return [dict(x) for x in c.execute("SELECT * FROM jobs WHERE scope=? ORDER BY created",(scope,))]
@@ -672,6 +927,74 @@ class Observation:
             self._witnesses[slot]=witness
             c.execute("COMMIT")
             return val
+
+    def absent_fact(self, key: str, pointer: str) -> bool:
+        """Witness the absence of a JSON object field, not an arbitrary failed read."""
+        parts=Memory._pointer_parts(pointer)
+        with self.memory._conn() as c:
+            c.execute("BEGIN")
+            obj,ver,lvl,author=self.memory._read_fact(c,self.actor,key)
+            node=obj
+            for part in parts[:-1]:
+                if not isinstance(node,dict) or part not in node:
+                    raise KeyError("parent for negative witness missing")
+                node=node[part]
+            if not isinstance(node,dict) or parts[-1] in node:
+                raise ValueError("field exists or is not an object member")
+            witness={"kind":"fact","source":key,"pointer":pointer,
+                     "expected_hash":ABSENT_WITNESS_HASH,"expected_version":ver,
+                     "expected_authority":self.memory._authority(lvl,author)}
+            slot=("fact",key,pointer)
+            previous=self._witnesses.get(slot)
+            if previous and (previous["expected_hash"]!=witness["expected_hash"] or
+                             previous["expected_authority"]!=witness["expected_authority"]):
+                raise Stale("negative source observation conflicted with earlier read")
+            self._witnesses[slot]=witness
+            c.execute("COMMIT")
+            return True
+
+    def patch_fact(self, key: str, changes: list[dict], *, job_fences=()) -> int:
+        """Patch fields already observed and advance only our own read witnesses.
+
+        The transaction validates the complete earlier read set and returns its
+        exact post-write state. Rebinding to that state prevents self-staleness
+        without silently refreshing reads to another worker's later write.
+        """
+        if not isinstance(changes,list) or not 1<=len(changes)<=64:
+            raise ValueError("patch requires 1..64 operations")
+        for operation in changes:
+            if not isinstance(operation,dict):
+                raise ValueError("invalid patch operation")
+            pointer=operation.get("path")
+            Memory._pointer_parts(pointer)
+            previous=self._witnesses.get(("fact",key,pointer))
+            expected=operation.get("expected_hash")
+            observed=ABSENT_WITNESS_HASH if expected is None else expected
+            if previous is None or previous["expected_hash"]!=observed:
+                raise Stale("read each exact patch field (or its absence) before editing it")
+        receipt=self.memory.patch_fact(self.actor,key,changes,
+            read_manifest=self.manifest(),return_snapshot=True,job_fences=job_fences)
+        updated=dict(self._witnesses)
+        fallback=False
+        for slot,witness in self._witnesses.items():
+            if slot[:2]!=("fact",key):
+                continue
+            try:
+                actual=witness_hash(receipt["value"],witness["pointer"])
+            except (KeyError,IndexError,ValueError,TypeError):
+                # A replaced ancestor removed this path. Conservatively witness
+                # the resulting whole object rather than inventing an absence.
+                del updated[slot]
+                fallback=True
+                continue
+            updated[slot]={**witness,"expected_hash":actual,
+                "expected_version":receipt["version"],"expected_authority":receipt["authority"]}
+        if fallback:
+            updated[("fact",key,"")]={"kind":"fact","source":key,"pointer":"",
+                "expected_hash":digest(receipt["value"]),"expected_version":receipt["version"],
+                "expected_authority":receipt["authority"]}
+        self._witnesses=updated
+        return receipt["version"]
 
     def artifact(self,id: str) -> Any:
         with self.memory._conn() as c:

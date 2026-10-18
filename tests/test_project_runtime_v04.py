@@ -16,7 +16,7 @@ from fluxos.kernel import Memory, Principal, Stale, IntegrityError
 @pytest.fixture
 def setup(tmp_path):
     mem=Memory(tmp_path/'state')
-    actor=Principal('worker','gemma-demo',1,frozenset({'reader','writer'}))
+    actor=Principal('worker','gemma-demo',1,frozenset({'reader','writer','coordinator'}))
     return mem,actor,tmp_path
 
 def publish(setup,project='campus',base=0,name='main.py',value='print(42)\n'):
@@ -105,8 +105,8 @@ def test_api_project_export_contains_accepted_revision(setup):
     app=TestClient(create_app(root/'server'))
     # Seed in server's own canonical store instead of manually changing DB paths.
     project_mem=Memory(root/'server'/'gemma_state')
-    job=project_mem.create_job('gemma-demo','gemma-worker','task',actor=Principal('gemma-worker','gemma-demo',1,frozenset({'reader','writer'})))
-    person=Principal('gemma-worker','gemma-demo',1,frozenset({'reader','writer'}))
+    job=project_mem.create_job('gemma-demo','gemma-worker','task',actor=Principal('gemma-worker','gemma-demo',1,frozenset({'reader','writer','coordinator'})))
+    person=Principal('gemma-worker','gemma-demo',1,frozenset({'reader','writer','coordinator'}))
     epoch=project_mem.set_job(job,'RUNNING',actor=person)
     w=Workspace(root/'server'/'gemma_workspace'/job)
     w.write_file('src/app.py','print("hello")\n')

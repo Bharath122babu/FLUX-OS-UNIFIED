@@ -1,0 +1,39 @@
+{
+  "release": "0.6.0",
+  "tests": {
+    "original_baseline_v05": 104,
+    "new_and_added": 23,
+    "total": 127,
+    "passed": 127,
+    "failed": 0,
+    "note": "Legacy test fixtures explicitly designate coordinator-trusted publishers under new write contract."
+  },
+  "simulation": {
+    "seed": 271828,
+    "agents": 20,
+    "trials": 12,
+    "preserved_disjoint_edits": 240,
+    "lost_updates": 0,
+    "same_field_winners": 1,
+    "same_field_conflicts": 19,
+    "real_model_calls": 0
+  },
+  "evidence": {
+    "full_python_test_suite": "PASS",
+    "deterministic_unified_demo": "PASS",
+    "wheel_build": "PASS",
+    "actual_Docker_security_run": "NOT_RUN",
+    "live_Gemma4": "NOT_RUN",
+    "full_upstream_line_by_line_audit": "NOT_DONE"
+  },
+  "truth_claim": "Claims are unverified assertions: a DISPUTED flag is not semantic resolution",
+  "limitations": [
+    "single-host SQLite",
+    "operator/trusted principals in process",
+    "unmediated inputs unknown",
+    "no automatic Gemma repair",
+    "no automatic safe external effects replay",
+    "bounded repo manifests",
+    "no causal truth oracle"
+  ]
+}

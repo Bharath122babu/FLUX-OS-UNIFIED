@@ -1,8 +1,18 @@
-# v0.5.0 backend security boundaries
+# v0.6.0 backend security boundaries
 
 **STATUS: local single-host research system. NOT certified for untrusted production deployments.**
 
 The trust boundary is operator-owned Python code + SQLite kernel versus model-proposed file writes, tool parameters and candidate processes. There is no cryptographically authenticated client identity or hardened separation between the trusted gateway and kernel. Use loopback only; never deploy to the public internet.
+
+## Shared-memory tools
+
+- Model-facing keys are derived by the host from the project or task identifier. Children inherit their parent's namespace. This is local project scoping, not authenticated multi-tenancy.
+- Shared note patches require exact prior field reads, matching preimages, and validation of the complete recorded read set inside the SQLite write transaction.
+- The exact committed patch receipt advances only the writer's own witnesses. A later competing write still fails final validation.
+- API job and child/parent generation fences are checked in the same transaction as shared-note creation, patches, and claim append operations. Trusted SDK callers without a job remain responsible for their own lifecycle.
+- Notes and claims persist separately from code acceptance and remain unverified. Claims are advisory and never substitute for independent black-box acceptance. Declared claim sources are not authenticated evidence.
+- Project history and claim reads filter by clearance. Stored claim values are checked against their hashes before being returned or included in a conflict status.
+- Reconciliation is an explicit trusted-coordinator operation after stopping old workers; it fences mutations and publication, but does not replay conversations or external effects.
 
 ## Verified by local tests
 

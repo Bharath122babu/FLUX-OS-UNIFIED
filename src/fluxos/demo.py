@@ -4,7 +4,7 @@ from pathlib import Path
 import shutil
 from .kernel import Memory, Principal
 
-DEMO = Principal("demo-engine","demo",1,frozenset({"reader","writer"}))
+DEMO = Principal("demo-engine","demo",1,frozenset({"reader","writer","coordinator"}))
 
 
 def _write(work:Path, name:str, data:str):

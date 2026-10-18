@@ -9,10 +9,10 @@ from fluxos.kernel import Memory,Principal,Denied,Stale,IntegrityError,projectio
 def mem(tmp_path):return Memory(tmp_path)
 
 @pytest.fixture
-def root():return Principal('owner','p',2,frozenset({'reader','writer','declassifier'}))
+def root():return Principal('owner','p',2,frozenset({'reader','writer','declassifier','coordinator'}))
 
 @pytest.fixture
-def worker():return Principal('worker','p',1,frozenset({'reader','writer'}))
+def worker():return Principal('worker','p',1,frozenset({'reader','writer','coordinator'}))
 
 def test_point_read_and_commit(mem,worker):
     mem.put_fact(worker,'x',{'a':2,'b':4})
@@ -66,7 +66,7 @@ def test_old_secret_cannot_be_overwritten(mem,root,worker):
 
 def test_cross_scope_cannot_read(mem,worker):
     mem.put_fact(worker,'x',1)
-    outsider=Principal('outside','other',2,frozenset({'reader','writer'}))
+    outsider=Principal('outside','other',2,frozenset({'reader','writer','coordinator'}))
     with pytest.raises(KeyError):mem.observe(outsider).fact('x')
 
 def test_artifact_downgrade_rejected(mem,root,worker):
@@ -74,7 +74,7 @@ def test_artifact_downgrade_rejected(mem,root,worker):
     with pytest.raises(Denied):mem.put_artifact(worker,'secret_artifact',{},[],label='internal')
 
 def test_output_cannot_downgrade_dep(mem,root):
-    actor=Principal('strong','p',2,frozenset({'reader','writer'}))
+    actor=Principal('strong','p',2,frozenset({'reader','writer','coordinator'}))
     mem.put_fact(root,'x',2,label='secret')
     o=mem.observe(actor);o.fact('x')
     with pytest.raises(Denied):mem.put_artifact(actor,'leak',2,o.manifest(),label='public')

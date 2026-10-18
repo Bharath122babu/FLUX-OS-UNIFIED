@@ -44,7 +44,7 @@ def test_native_function_call_transport(tmp_path):
         else:data={'candidates':[{'content':{'parts':[{'text':'Wrote hello.py. Tests were unavailable.'}]}}]}
         return httpx.Response(200,json=data)
     client=GemmaClient(key='fake-for-mock',transport=httpx.MockTransport(fake))
-    memory=Memory(tmp_path/'db');actor=Principal('worker','mock',1,frozenset({'reader','writer'}))
+    memory=Memory(tmp_path/'db');actor=Principal('worker','mock',1,frozenset({'reader','writer','coordinator'}))
     memory.put_fact(actor,'task',{'goal':'write hello'})
     agent=GemmaAgent(client,memory,actor,Workspace(tmp_path/'code'),'task')
     out=agent.run('Make hello.py',max_steps=3)
@@ -102,7 +102,7 @@ def test_dynamic_parallel_agents_merge_distinct_files(tmp_path):
             else:parts=[{'text':'Completed child task'}]
         with lock:model_calls.append(first[:50])
         return httpx.Response(200,json={'candidates':[{'content':{'parts':parts}}]})
-    memory=Memory(tmp_path/'db');actor=Principal('worker','mock',1,frozenset({'reader','writer'}))
+    memory=Memory(tmp_path/'db');actor=Principal('worker','mock',1,frozenset({'reader','writer','coordinator'}))
     memory.put_fact(actor,'task',{'goal':'parallel'})
     agent=GemmaAgent(GemmaClient(key='test',transport=httpx.MockTransport(fake)),memory,actor,Workspace(tmp_path/'code'),'task')
     result=agent.run('parent',max_steps=3)
@@ -120,7 +120,7 @@ def test_api_rejects_missing_gemma_key(tmp_path,monkeypatch):
     assert 'GEMINI_API_KEY' in r.text
 
 def test_requirement_change_during_model_run_rejects_authoritative_result(tmp_path):
-    actor=Principal('runner','mock',1,frozenset({'reader','writer'}))
+    actor=Principal('runner','mock',1,frozenset({'reader','writer','coordinator'}))
     mem=Memory(tmp_path/'db');mem.put_fact(actor,'req',{'goal':'make one module'})
     calls=0
     def mutate_on_call(req):
@@ -142,7 +142,7 @@ def test_gemma_multimodal_request_is_wired(tmp_path):
     def fake(req):
         seen.append(json.loads(req.content))
         return httpx.Response(200,json={'candidates':[{'content':{'parts':[{'text':'No code requested'}]}}]})
-    mem=Memory(tmp_path/'db');actor=Principal('agent','demo',1,frozenset({'reader','writer'}))
+    mem=Memory(tmp_path/'db');actor=Principal('agent','demo',1,frozenset({'reader','writer','coordinator'}))
     mem.put_fact(actor,'req',{'goal':'look at diagram'})
     a=GemmaAgent(GemmaClient(key='mock',transport=httpx.MockTransport(fake)),mem,actor,Workspace(tmp_path/'work'),'req')
     a.run('Interpret diagram',image=(b'\x89PNG\r\n','image/png'))

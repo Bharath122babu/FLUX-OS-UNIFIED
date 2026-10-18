@@ -9,8 +9,8 @@ from fluxos.agent import Workspace,GemmaAgent,GemmaClient
 @pytest.fixture
 def setup(tmp_path):
     m=Memory(tmp_path/'db')
-    admin=Principal('admin','team',2,frozenset({'reader','writer','declassifier'}))
-    dev=Principal('dev','team',1,frozenset({'reader','writer'}))
+    admin=Principal('admin','team',2,frozenset({'reader','writer','declassifier','coordinator'}))
+    dev=Principal('dev','team',1,frozenset({'reader','writer','coordinator'}))
     return m,admin,dev
 
 def test_classification_escalation_blocks_same_value_derived_read(setup):

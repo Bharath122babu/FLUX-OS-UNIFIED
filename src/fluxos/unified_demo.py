@@ -17,7 +17,7 @@ def run(home:Path|str|None=None)->dict:
     repo=Workspace(home/'project');repo.write_file('api.py',"FIELD = 'email'\n")
     repo.write_file('styles.css','body { color: navy; }\n')
     memory=Memory(home/'state')
-    actor=Principal('example-coordinator','unified-demo',1,frozenset({'reader','writer'}))
+    actor=Principal('example-coordinator','unified-demo',1,frozenset({'reader','writer','coordinator'}))
     source='repo:sample:tree'
     memory.register_source_tree(actor,source,repo.file_manifest())
     frontend=memory.observe(actor)

@@ -21,7 +21,7 @@ from fluxos.api import create_app
 @pytest.fixture
 def core(tmp_path):
     mem=Memory(tmp_path/'state')
-    actor=Principal('worker','project',1,frozenset({'reader','writer'}))
+    actor=Principal('worker','project',1,frozenset({'reader','writer','coordinator'}))
     mem.put_fact(actor,'requirement',{'task':'update code'})
     return mem,actor
 
@@ -96,7 +96,7 @@ def test_byte_changed_outside_repo_registry_is_refused(core,tmp_path):
 
 def test_second_worker_cannot_overwrite_artifact(core):
     m,a=core
-    b=Principal('other','project',1,frozenset({'reader','writer'}))
+    b=Principal('other','project',1,frozenset({'reader','writer','coordinator'}))
     m.put_artifact(a,'shared',{'by':'a'},[])
     with pytest.raises(Denied):m.put_artifact(b,'shared',{'by':'b'},[])
     publisher=Principal('reviewer','project',1,frozenset({'reader','writer','publisher'}))

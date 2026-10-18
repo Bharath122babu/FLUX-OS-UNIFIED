@@ -2,19 +2,20 @@
 
 **A backend for coding agents that tracks changing inputs, independently checks candidate code, and commits accepted project revisions.**
 
-![Version](https://img.shields.io/badge/version-0.5.0-blue)
+![Version](https://img.shields.io/badge/version-0.6.0-blue)
 ![Python](https://img.shields.io/badge/python-3.11%2B-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Status](https://img.shields.io/badge/status-research%20prototype-orange)
 
 FLUX//OS combines a Gemma tool-calling loop, private coding workspaces, Docker execution, and a SQLite causal commit kernel. It explores a practical question: **when requirements or source files change, can an agent preserve unaffected work while rejecting results built on stale inputs?**
 
-This is the **v0.5.0 backend-only research release**. It includes a CLI and FastAPI service; there is no application frontend. Improvements in model accuracy, token efficiency, or task completion have not been established by a live comparative benchmark.
+This is the **v0.6.0 backend-only shared-memory release**. It includes a CLI, FastAPI service, and project-scoped shared-memory tools for Gemma and its workers. There is no application frontend. Improvements in model accuracy, token efficiency, or task completion have not been established by a live comparative benchmark.
 
 ## Contents
 
 - [Features](#features)
 - [How it works](#how-it-works)
+- [Shared memory](#shared-memory)
 - [Requirements](#requirements)
 - [Quick start](#quick-start)
 - [Run a real coding task](#run-a-real-coding-task)
@@ -31,7 +32,7 @@ This is the **v0.5.0 backend-only research release**. It includes a CLI and Fast
 
 ## Features
 
-| Capability | Behavior in v0.5.0 |
+| Capability | Behavior in v0.6.0 |
 | --- | --- |
 | Causal dependency tracking | Records observed facts and file hashes; rejects publication when recorded dependencies are stale. |
 | Private candidates | Keeps proposed changes separate from the accepted project revision. |
@@ -42,6 +43,9 @@ This is the **v0.5.0 backend-only research release**. It includes a CLI and Fast
 | Container execution | Runs Python or Node commands through Docker with resource limits and networking disabled. |
 | Execution history | Records model, tool, and publication events in SQLite for inspection. |
 | Offline demos | Demonstrates stale-input detection and selective repair without model calls or Docker. |
+| Conditional shared memory | Version checks and atomic field patches prevent blind overwrites; disjoint edits preserve one another. |
+| Shared Gemma tools | Project-scoped reads, conditional text-note patches, and explicitly unverified claims shared with delegated workers. |
+| Interrupted-job fencing | Stops cancelled or interrupted workers and their children from writing shared notes or claims using an obsolete generation. |
 
 The kernel is the single commit authority. Model output and a reported developer-test PASS cannot independently authorize publication.
 
@@ -66,6 +70,25 @@ Acceptance checks a Python CLI's exact stdout and exit code for operator-defined
 
 `VERIFIED` means the configured acceptance cases passed under these boundaries. It does not prove arbitrary code is correct or secure. `DECLARED_CURRENT`, used in the causal demos, means recorded dependencies remain current; it is a separate property from acceptance.
 
+## Shared memory
+
+Gemma can call these tools during a normal coding run:
+
+| Tool | Behavior |
+| --- | --- |
+| `read_shared_memory` | Reads a JSON-object pointer in this project's unverified notes; reports the value, field hash, and version, or an explicit absence. |
+| `patch_shared_memory` | Atomically edits 1–16 previously read fields using their hashes. Model-facing values are text notes, each at most 8 KB. |
+| `record_shared_claim` | Appends a text assertion and a declared evidence source within the project. |
+| `read_shared_claims` | Lists visible assertions for a predicate and reports `UNCONTESTED`, `DISPUTED`, or `UNAVAILABLE`. |
+
+For example, ask the agent to read `/plan`, store its implementation plan using the returned `expected_hash` (or `null` for an absent field), and then implement the task. Use exact field reads rather than reading the entire note store when only one field is needed. Workers inherit the parent's memory namespace; different project IDs have separate namespaces. Later runs on the same project reuse the persisted notes.
+
+The host validates the complete recorded read set in the same SQLite transaction as each patch. It advances witnesses to the exact result of the agent's own write, so a successful edit does not make its own work stale. Another worker's conflicting changes are not silently refreshed into the observation.
+
+Notes and claims are **unverified coordination data**. They persist even when a code run is rejected or remains a draft; they are not rolled back with candidate files. Claims do not authorize publication, resolve semantic truth, or replace independent acceptance. Claim listings are advisory rather than causal read witnesses. Shared fact reads are witnessed and can invalidate dependent work when their values change; automatic repair remains unimplemented.
+
+Inspect notes through `GET /api/projects/{project_id}/memory`. The trusted Python API additionally supports conditional whole-fact writes, JSON object patches, negative dependencies, and job reconciliation. See the [shared-memory guide](docs/SHARED_MEMORY_INTEGRATION_v0.6.0.md).
+
 ## Requirements
 
 - **Python 3.11 or newer**, with `pip` and `venv`.
@@ -73,7 +96,7 @@ Acceptance checks a Python CLI's exact stdout and exit code for operator-defined
 - For live model runs: a **`GEMINI_API_KEY`** with access to the model configured in `src/fluxos/agent.py`.
 - For candidate commands and independent acceptance: **Docker**, a running daemon capable of Linux containers, and the required images already pulled.
 
-Offline demos and unit/mock tests do not need an API key or Docker. On Windows, Docker must be configured for Linux containers. After the portability fixes, local Windows tests returned **109 passed, 3 skipped, 0 failed**. The three symlink tests require Windows symlink privileges. See [local verification](docs/LOCAL_VERIFICATION_2026-10-18.md) for scope and results.
+Offline demos and unit/mock tests do not need an API key or Docker. On Windows, Docker must be configured for Linux containers. Local v0.6 tests returned **159 passed, 3 skipped, 0 failed**. The three symlink tests require Windows symlink privileges. See [v0.6 verification](docs/FINAL_VERIFICATION_v0.6.0.md) for scope and results.
 
 ## Quick start
 
@@ -103,6 +126,7 @@ Install the package and test dependencies:
 
 ```bash
 python -m pip install -e ".[test]"
+python scripts/preflight.py
 ```
 
 ### 2. Try the offline demo
@@ -250,7 +274,7 @@ On PowerShell, use `curl.exe` for these curl commands, or `Invoke-RestMethod` an
 | Setting | Default | How to set it |
 | --- | --- | --- |
 | API credential | Unset | `GEMINI_API_KEY` environment variable. Required only for real model runs. |
-| Model | `gemma-4-26b-a4b-it` | Defined in `src/fluxos/agent.py`; `GemmaClient` also accepts a model argument in Python. There is no CLI model flag. |
+| Model | `gemma-4-26b-a4b-it` | `GEMMA_MODEL` environment variable; an explicit `GemmaClient(model=...)` argument takes precedence. There is no CLI model flag. |
 | State directory | `.fluxos` | `fluxos serve --home <directory>` |
 | Server port | `8765` | `fluxos serve --port <port>` |
 | Server host | `127.0.0.1` | Fixed by the CLI launcher. |
@@ -281,6 +305,7 @@ State under `<home>` includes `gemma_state` for SQLite state, `gemma_workspace` 
 | `POST` | `/api/gemma/run` | Run a coding task against a project's accepted revision. |
 | `GET` | `/api/projects/{project_id}` | Read accepted head and revision history. |
 | `GET` | `/api/projects/{project_id}/export` | Download accepted source as a ZIP. |
+| `GET` | `/api/projects/{project_id}/memory` | Inspect persisted unverified project notes and their version. |
 | `GET` | `/api/jobs/{job_id}/events` | Read job state and recorded execution events. |
 | `GET` | `/api/demo` | Initialize if necessary and read deterministic demo state. |
 | `POST` | `/api/demo/reset` | Reset the deterministic demo. |
@@ -301,8 +326,10 @@ State under `<home>` includes `gemma_state` for SQLite state, `gemma_workspace` 
 │   ├── executor.py       # Bounded Docker Python/Node execution
 │   ├── gateway.py        # Seal, evaluate, validate, and publish gate
 │   ├── kernel.py         # SQLite facts, artifacts, witnesses, jobs, project heads
+│   ├── shared.py         # Project-scoped shared-memory tools and bounds
 │   └── unified_demo.py   # File-hash dependency demonstration
 ├── tests/                # Unit, regression, and mock integration tests
+├── scripts/              # Readiness, 20-worker stress, and real Docker smoke checks
 ├── examples/
 │   ├── blackbox-acceptance/  # Current Python CLI acceptance example
 │   └── acceptance/           # Developer unittest example
@@ -318,15 +345,16 @@ From the installed virtual environment:
 
 ```bash
 python -m pytest -q
+python scripts/shared_memory_stress.py
 fluxos unified-demo
 fluxos benchmark
 ```
 
-The supplied [release verification record](artifacts/VERIFICATION_v0.5.0.json) reports **104 passing tests in the original release environment**, including mocked Gemma and Docker paths. Coverage includes forged acceptance rejection, snapshot tampering, stale contract detection, project isolation, checked changes, provider retries, and execution journaling.
+The v0.6 suite contains **162 test cases**. Local Windows verification returned **159 passed, 3 skipped, 0 failed**, with the three skips caused only by missing symlink privileges. The 20-worker stress test preserved all **240 disjoint edits**, with **zero lost updates**, and rejected 19 of 20 competing same-field writes.
 
-The original release did **not** include live Gemma calls, real Docker execution, or a measured agent-performance benchmark. Those remain separate validation steps. See [security boundaries](docs/SECURITY.md) and [release notes](docs/RELEASE_NOTES_v0.5.0.md) before interpreting test results as deployment guarantees.
+GitHub Actions runs the suite, stress check, and offline demos on Ubuntu and Windows with Python 3.11 and 3.12. The Ubuntu Python 3.12 job additionally runs `scripts/docker_acceptance_smoke.py` with actual Python and Node containers and a scripted model. This exercises accepted project revisions, shared-note reuse, ZIP export, and wrong-output rejection. It makes **zero live Gemma requests** and is not a container penetration test.
 
-**Local verification on October 18, 2026:** editable installation, the unified offline demo, and the synthetic benchmark succeeded on Windows with Python 3.12.10. After fixes for portable paths, stable file bytes, writable private copies, and rejected-snapshot cleanup, the suite returned **109 passed, 3 skipped, 0 failed**. Only the three real symlink tests are skipped when Windows reports missing symlink privileges; unexpected errors still fail. GitHub Actions runs tests on Ubuntu and Windows with Python 3.11 and 3.12. See the [local verification record](docs/LOCAL_VERIFICATION_2026-10-18.md) for initial and follow-up results.
+See the [v0.6 verification record](docs/FINAL_VERIFICATION_v0.6.0.md). The supplied [v0.5 record](artifacts/VERIFICATION_v0.5.0.json), [v0.6 archive record](artifacts/VERIFICATION_v0.6.0.json), and [Windows repair history](docs/LOCAL_VERIFICATION_2026-10-18.md) are preserved as historical evidence. Live Gemma validation remains pending a credential; measured model-performance improvement is unproven.
 
 ## Security and limitations
 
@@ -358,7 +386,9 @@ Remaining work includes durable conversation resumption, automatic model-driven 
 
 ## Documentation
 
-- [v0.5.0 release notes](docs/RELEASE_NOTES_v0.5.0.md) — current changes, trust boundaries, and remaining release gates.
+- [v0.6.0 release notes](docs/RELEASE_NOTES_v0.6.0.md) — current changes and remaining release gates.
+- [Shared-memory integration](docs/SHARED_MEMORY_INTEGRATION_v0.6.0.md) — model tools, isolation, conditional writes, and limitations.
+- [v0.6 final verification](docs/FINAL_VERIFICATION_v0.6.0.md) — current evidence and live-test readiness.
 - [Security](docs/SECURITY.md) — threat model and deployment limitations.
 - [Backend engineering decisions](docs/OPEN_CODE_BACKEND_DECISIONS_v0.5.0.md) — design patterns and implementation choices.
 - [Original verification record](artifacts/VERIFICATION_v0.5.0.json) — original release test and environment claims.
@@ -366,7 +396,7 @@ Remaining work includes durable conversation resumption, automatic model-driven 
 - [Architecture history](docs/ARCHITECTURE.md) and [unified core history](docs/UNIFIED_CORE.md) — historical context; use current release notes for present behavior.
 - [Gemma benchmark plan](docs/GEMMA_BENCHMARK_PLAN.md) — proposed evaluation methodology.
 
-Earlier audit, submission, and release documents are retained for traceability and may describe superseded behavior. This README, the v0.5.0 release notes, and the security document provide the current release guidance.
+Earlier audit, submission, and release documents are retained for traceability and may describe superseded behavior. This README, the v0.6.0 release notes, the shared-memory guide, and the security document provide current guidance.
 
 ## Contributing
 

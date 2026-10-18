@@ -24,3 +24,12 @@ jobs:
       - run: python -m pytest -q -rs
       - run: fluxos unified-demo
       - run: fluxos benchmark
+      - run: python scripts/shared_memory_stress.py
+      - name: Prepare real Docker runtime images
+        if: matrix.os == 'ubuntu-latest' && matrix.python == '3.12'
+        run: |
+          docker pull python:3.12-alpine
+          docker pull node:22-alpine
+      - name: Real Docker acceptance and project reuse
+        if: matrix.os == 'ubuntu-latest' && matrix.python == '3.12'
+        run: python scripts/docker_acceptance_smoke.py

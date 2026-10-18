@@ -10,7 +10,9 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from .kernel import Memory,Principal
-from .agent import GemmaClient,GemmaAgent,Workspace,ConfigError
+from .agent import GemmaClient,GemmaAgent,Workspace,ConfigError,MODEL
+from .shared import project_memory_key
+from . import __version__
 from . import demo
 
 class Change(BaseModel):
@@ -26,7 +28,7 @@ class Goal(BaseModel):
 def create_app(home: str|Path=".fluxos") -> FastAPI:
     home=Path(home).resolve()
     home.mkdir(parents=True,exist_ok=True)
-    app=FastAPI(title="FLUX//OS",description="Local research backend")
+    app=FastAPI(title="FLUX//OS",description="Local research backend",version=__version__)
     demo_home=home/"causal_demo"
     gemma_home=home/"gemma_workspace"
     acceptance_root=home/"acceptance"
@@ -67,7 +69,8 @@ def create_app(home: str|Path=".fluxos") -> FastAPI:
     @app.get("/api/health")
     def health():
         return {"running":True,"gemma_key_present":bool(os.getenv("GEMINI_API_KEY")),
-                "model":"gemma-4-26b-a4b-it","causal_demo_present":(demo_home/"state.sqlite3").exists(),
+                "model":os.getenv('GEMMA_MODEL') or MODEL,"version":__version__,
+                "causal_demo_present":(demo_home/"state.sqlite3").exists(),
                 "mode":"LOCAL_DEVELOPMENT_ONLY"}
 
     @app.get("/api/demo")
@@ -90,7 +93,7 @@ def create_app(home: str|Path=".fluxos") -> FastAPI:
         return demo.repair(demo_home)
 
     def project_reader():
-        return Memory(home/"gemma_state"), Principal("gemma-worker","gemma-demo",1,frozenset({"reader","writer"}))
+        return Memory(home/"gemma_state"), Principal("gemma-worker","gemma-demo",1,frozenset({"reader","writer","agent"}))
 
     @app.get("/api/projects/{project_id}")
     def get_project(project_id:str):
@@ -122,6 +125,22 @@ def create_app(home: str|Path=".fluxos") -> FastAPI:
         except (ValueError,Exception) as exc:
             raise HTTPException(409,f"Project unavailable: {type(exc).__name__}")
 
+    @app.get("/api/projects/{project_id}/memory")
+    def project_memory(project_id:str):
+        mem,actor=project_reader()
+        try:
+            key=project_memory_key(project_id)
+            head=mem.fact_head(actor,key)
+            return {"project_id":project_id,"version":head['version'],
+                    "notes":head['value'],"trust":"UNVERIFIED_SHARED_NOTES"}
+        except KeyError:
+            return {"project_id":project_id,"version":0,"notes":{},
+                    "trust":"UNVERIFIED_SHARED_NOTES"}
+        except ValueError as exc:
+            raise HTTPException(422,str(exc))
+        except Exception as exc:
+            raise HTTPException(409,f"Shared memory unavailable: {type(exc).__name__}")
+
     @app.get('/api/jobs/{job_id}/events')
     def job_events(job_id:str):
         mem,actor=project_reader()
@@ -145,7 +164,7 @@ def create_app(home: str|Path=".fluxos") -> FastAPI:
             raise HTTPException(409,f"Project head invalid: {type(exc).__name__}")
         base_revision=accepted["revision"] if accepted else 0
         job=mem.create_job(actor.scope,actor.name,params.task,actor=actor)
-        mem.put_fact(actor,"task:"+job,{"goal":params.task})
+        mem.put_fact(actor,"task:"+job,{"goal":params.task},expected_version=0)
         mem.set_job(job,"RUNNING",actor=actor)
         try:
             image=None

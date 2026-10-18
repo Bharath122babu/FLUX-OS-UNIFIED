@@ -19,7 +19,7 @@ from fluxos.kernel import Memory, Principal, IntegrityError
 @pytest.fixture
 def runtime(tmp_path):
     memory=Memory(tmp_path/'db')
-    actor=Principal('agent','project',1,frozenset({'reader','writer'}))
+    actor=Principal('agent','project',1,frozenset({'reader','writer','coordinator'}))
     job=memory.create_job(actor.scope,actor.name,'task',actor=actor)
     generation=memory.set_job(job,'RUNNING',actor=actor)
     candidate=Workspace(tmp_path/'working')
@@ -248,7 +248,7 @@ def test_nonretryable_model_error_ends_immediately():
 
 def test_job_journal_persists_tool_results_and_gate_outcome(tmp_path):
     mem=Memory(tmp_path/'kernel')
-    actor=Principal('a','s',1,frozenset({'reader','writer'}))
+    actor=Principal('a','s',1,frozenset({'reader','writer','coordinator'}))
     mem.put_fact(actor,'task',{'goal':'simple'})
     job=mem.create_job('s','a','do simple',actor=actor)
     mem.set_job(job,'RUNNING',actor=actor)
@@ -296,7 +296,7 @@ def test_project_acceptance_contract_is_project_scoped(tmp_path,monkeypatch):
 
 def test_child_agent_delete_is_preserved_in_private_merge(tmp_path):
     mem=Memory(tmp_path/'state')
-    actor=Principal('a','scope',1,frozenset({'reader','writer'}))
+    actor=Principal('a','scope',1,frozenset({'reader','writer','coordinator'}))
     mem.put_fact(actor,'task',{'goal':'remove deprecated code'})
     base=Workspace(tmp_path/'project')
     base.write_file('deprecated.py','old=1')
